@@ -1,0 +1,25 @@
+# Configuration file for $__PROJECT_NAME__$
+# 
+# This is the main configuration file for your plugin.
+# You can customize these settings according to your plugin's needs.
+
+# Plugin settings
+plugin:
+  enabled: true
+  debug: false
+  
+# Feature toggles
+features:
+  example-feature: true
+  
+# Messages (supports color codes with &)
+messages:
+  prefix: "&7[&6$__PROJECT_NAME__$&7]&r "
+  no-permission: "&cYou don't have permission to use this command!"
+  plugin-reloaded: "&aPlugin configuration reloaded successfully!"
+  
+# Example configuration values
+settings:
+  max-items: 64
+  cooldown-seconds: 30
+  default-world: "world"

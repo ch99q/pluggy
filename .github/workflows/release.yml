@@ -1,0 +1,170 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux-amd64
+            artifact: pluggy-linux-amd64
+          - os: ubuntu-latest
+            target: linux-arm64
+            artifact: pluggy-linux-arm64
+          - os: macos-latest
+            target: darwin-amd64
+            artifact: pluggy-darwin-amd64
+          - os: macos-latest
+            target: darwin-arm64
+            artifact: pluggy-darwin-arm64
+          - os: windows-latest
+            target: windows-amd64
+            artifact: pluggy-windows-amd64.exe
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Deno
+        uses: denoland/setup-deno@v1
+        with:
+          deno-version: v1.x
+
+      - name: Cache Deno dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/deno
+          key: ${{ runner.os }}-deno-${{ hashFiles('**/deno.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deno-
+
+      - name: Build for Linux AMD64
+        if: matrix.target == 'linux-amd64' && runner.os == 'Linux'
+        run: |
+          deno compile \
+            --unstable-net \
+            --allow-net \
+            --allow-env \
+            --allow-read \
+            --allow-write \
+            --allow-run \
+            --unstable-raw-imports \
+            --target x86_64-unknown-linux-gnu \
+            --output=${{ matrix.artifact }} \
+            ./mod.ts
+
+      - name: Build for Linux ARM64
+        if: matrix.target == 'linux-arm64' && runner.os == 'Linux'
+        run: |
+          deno compile \
+            --unstable-net \
+            --allow-net \
+            --allow-env \
+            --allow-read \
+            --allow-write \
+            --allow-run \
+            --unstable-raw-imports \
+            --target aarch64-unknown-linux-gnu \
+            --output=${{ matrix.artifact }} \
+            ./mod.ts
+
+      - name: Build for macOS AMD64
+        if: matrix.target == 'darwin-amd64' && runner.os == 'macOS'
+        run: |
+          deno compile \
+            --unstable-net \
+            --allow-net \
+            --allow-env \
+            --allow-read \
+            --allow-write \
+            --allow-run \
+            --unstable-raw-imports \
+            --target x86_64-apple-darwin \
+            --output=${{ matrix.artifact }} \
+            ./mod.ts
+
+      - name: Build for macOS ARM64
+        if: matrix.target == 'darwin-arm64' && runner.os == 'macOS'
+        run: |
+          deno compile \
+            --unstable-net \
+            --allow-net \
+            --allow-env \
+            --allow-read \
+            --allow-write \
+            --allow-run \
+            --unstable-raw-imports \
+            --target aarch64-apple-darwin \
+            --output=${{ matrix.artifact }} \
+            ./mod.ts
+
+      - name: Build for Windows AMD64
+        if: matrix.target == 'windows-amd64' && runner.os == 'Windows'
+        run: |
+          deno compile `
+            --unstable-net `
+            --allow-net `
+            --allow-env `
+            --allow-read `
+            --allow-write `
+            --allow-run `
+            --unstable-raw-imports `
+            --target x86_64-pc-windows-msvc `
+            --output=${{ matrix.artifact }} `
+            ./mod.ts
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.artifact }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          
+          # Copy and rename artifacts to match install script expectations
+          cp artifacts/pluggy-linux-amd64/pluggy-linux-amd64 release-assets/pluggy-linux-amd64
+          cp artifacts/pluggy-linux-arm64/pluggy-linux-arm64 release-assets/pluggy-linux-arm64
+          cp artifacts/pluggy-darwin-amd64/pluggy-darwin-amd64 release-assets/pluggy-darwin-amd64
+          cp artifacts/pluggy-darwin-arm64/pluggy-darwin-arm64 release-assets/pluggy-darwin-arm64
+          cp artifacts/pluggy-windows-amd64.exe/pluggy-windows-amd64.exe release-assets/pluggy-windows-x86_64.exe
+          
+          # Make binaries executable
+          chmod +x release-assets/pluggy-*
+          
+          # Copy install scripts
+          cp install.sh release-assets/
+          cp install.ps1 release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            release-assets/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
