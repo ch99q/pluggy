@@ -642,7 +642,7 @@ async function installDependencies(project: Project, force = false, forcePlatfor
         if (!force && !gameVersionCompatible) {
           if (version && version === versionInfo.version_number) {
             // This is the exact version we want, but it's not compatible - show warning but continue
-            log.warn(`Warning: ${dependency} version ${version} may not be compatible with Minecraft ${compatibilityVersions.join(", ")}. Supported versions: ${versionInfo.game_versions.join(", ")}`);
+            log.warn(`Warning: ${modrinthProject.title} version ${version} may not be compatible with Minecraft ${compatibilityVersions.join(", ")}. ${'\n'}  ${modrinthProject.title} supported game versions: ${versionInfo.game_versions.join(", ")}`);
           } else {
             continue; // Skip this version if we're looking for any compatible version
           }
@@ -666,7 +666,7 @@ async function installDependencies(project: Project, force = false, forcePlatfor
       await Deno.mkdir(LIBS_DIR, { recursive: true });
       await Deno.writeFile(filePath, payload);
 
-      log.success(`Installed dependency ${dependency} version ${version} from Modrinth.`);
+      log.success(`Installed dependency ${modrinthProject.title} version ${version} from Modrinth.`);
     } else {
       log.debug(`Dependency ${dependency} version ${version} already exists in project. Use --force to overwrite.`);
     }
