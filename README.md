@@ -144,6 +144,7 @@ Pluggy projects are configured via `plugin.json` in the project root:
 - **dependencies**: Modrinth plugin dependencies with versions
 - **shading**: Dependency inclusion/exclusion patterns for JAR packaging
 - **compatibility**: Target Minecraft versions and server platforms
+- **registries**: Additional Maven repositories for dependency resolution
 
 ## Advanced Usage
 
@@ -163,6 +164,45 @@ Shading configuration allows fine-grained control over which dependency classes 
 ```
 
 Patterns use glob syntax (`**` for recursive matching, `*` for single-level wildcards).
+
+### Maven Dependencies
+Pluggy supports Maven-style dependencies in the format `maven:groupId:artifactId:versionId`. This allows you to include libraries from Maven Central or other configured repositories:
+
+```bash
+pluggy install maven:net.kyori:adventure-api@4.22.0
+```
+This will download the specified version of the library and include it in your project.
+
+```xml
+<dependency>
+  <groupId>net.kyori</groupId>
+  <artifactId>adventure-api</artifactId>
+  <version>4.22.0</version>
+</dependency>
+<repositories>
+  <repository>
+    <id>sonatype-oss-snapshots1</id>
+    <url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
+  </repository>
+</repositories>
+```
+
+The above XML snippet would be the same as adding the following to your `plugin.json`:
+
+```json
+{
+  "registries": [
+    "https://s01.oss.sonatype.org/content/repositories/snapshots/"
+  ]
+}
+```
+
+And then installing the dependency with:
+
+```bash
+pluggy install maven:net.kyori:adventure-api@4.22.0
+```
+
 
 ### Local Dependencies
 
