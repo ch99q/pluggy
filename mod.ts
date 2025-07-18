@@ -744,6 +744,8 @@ if (import.meta.main) {
           SOURCE_DIR = join(ROOT_DIR, "src");
           LIBS_DIR = join(ROOT_DIR, "libs");
 
+          DEFAULT_PROJECT.name = basename(ROOT_DIR);
+
           if (!args.yes) {
             if (await Deno.stat(join(ROOT_DIR)).then(() => true).catch(() => false)) {
               if (!globalThis.confirm(green("?") + " A project already exists in this directory. Do you want to overwrite it?")) {
