@@ -14,7 +14,7 @@ import { parse as parseYaml, stringify as stringifyYaml } from "jsr:@std/yaml";
 import { ZipReader, BlobWriter } from "jsr:@zip-js/zip-js";
 
 const CLI_NAME = "pluggy";
-const CLI_VERSION = "0.1.0";
+const CLI_VERSION = "0.0.0";
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
 

@@ -32,6 +32,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Extract version from tag
+        id: get_version
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            # Extract version from tag (remove 'v' prefix if present)
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+          else
+            # For workflow_dispatch, use a dev version
+            echo "version=dev-$(date +%Y%m%d-%H%M%S)" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
+      - name: Update CLI version in mod.ts
+        run: |
+          # Replace the CLI_VERSION constant with the extracted version
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            sed -i 's/const CLI_VERSION = ".*";/const CLI_VERSION = "${{ steps.get_version.outputs.version }}";/' mod.ts
+          else
+            sed -i 's/const CLI_VERSION = ".*";/const CLI_VERSION = "${{ steps.get_version.outputs.version }}";/' mod.ts
+          fi
+          
+          # Verify the replacement worked
+          echo "Updated CLI_VERSION to: ${{ steps.get_version.outputs.version }}"
+          grep "const CLI_VERSION" mod.ts
+        shell: bash
+
       - name: Setup Deno
         uses: denoland/setup-deno@v1
         with:
