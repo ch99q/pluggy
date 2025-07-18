@@ -1,11 +1,20 @@
 
+```
+ ____  _                            
+|  _ \| |_   _  __ _  __ _ _   _ 
+| |_) | | | | |/ _` |/ _` | | | |
+|  __/| | |_| | (_| | (_| | |_| |
+|_|   |_|\__,_|\__, |\__, |\__, |
+               |___/ |___/ |___/ 
+```
+
 # Pluggy
 
-A command-line tool for Minecraft plugin development that streamlines project initialization, dependency management, and build processes with integrated Modrinth support.
+A command-line tool for Minecraft plugin development that streamlines project initialization, dependency management, and build processes.
 
 ## Overview
 
-Pluggy eliminates the boilerplate and complexity typically associated with setting up Minecraft plugin development environments. It provides a cohesive workflow from project initialization through dependency resolution to final JAR packaging, with particular emphasis on the Modrinth ecosystem.
+Pluggy is built around the Modrinth ecosystem, providing a cohesive workflow from project initialization through dependency resolution to final JAR packaging. Rather than being just another build tool, Pluggy leverages Modrinth as the primary source for plugin discovery, dependency management, and version compatibility—making modern Minecraft plugin development faster and more reliable.
 
 ## Key Features
 
