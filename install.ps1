@@ -25,7 +25,7 @@ $arch = Get-Arch
 $os = "windows"
 $exeName = "$Binary.exe"
 $downloadUrl = "https://github.com/$Repo/releases/latest/download/$Binary-$os-$arch.exe"
-$installDir = "$env:USERPROFILE\.deno\bin"
+$installDir = "$env:LOCALAPPDATA\Programs\$Binary"
 
 if (-not (Test-Path $installDir)) {
     New-Item -ItemType Directory -Path $installDir | Out-Null
