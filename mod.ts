@@ -184,6 +184,13 @@ function generateClassPath(project: Project): string {
     for (const [id, dep] of Object.entries(project.dependencies)) {
       if (dep.startsWith("file:")) {
         classPath.push(relative(ROOT_DIR, dep.slice(5)));
+      } else if (dep.startsWith("maven:")) {
+        const [groupId, artifactId, version] = dep.slice(6).split(":");
+        if (!groupId || !artifactId || !version) {
+          throw new Error(`Invalid Maven dependency format: ${dep}. Expected format: "maven:groupId:artifactId:version".`);
+        }
+        const jarPath = join(LIBS_DIR, `${artifactId}-${version}.jar`);
+        classPath.push(relative(ROOT_DIR, jarPath));
       } else {
         classPath.push(relative(ROOT_DIR, join(LIBS_DIR, `${id}-${dep}.jar`)));
       }
@@ -359,6 +366,17 @@ async function buildProject(project: Project): Promise<string> {
         resolve(ROOT_DIR, version.slice(5)),
         await jarToObject(
           resolve(ROOT_DIR, version.slice(5)),
+          ["META-INF/**/*"].concat(shading?.exclude ?? []),
+          shading?.include ? ["plugin.yml"].concat(shading?.include) : ["plugin.yml", "**/*"]
+        )
+      ];
+    }
+    if (version.startsWith("maven:")) {
+      return [
+        key,
+        version.slice(7),
+        await jarToObject(
+          version.slice(7),
           ["META-INF/**/*"].concat(shading?.exclude ?? []),
           shading?.include ? ["plugin.yml"].concat(shading?.include) : ["plugin.yml", "**/*"]
         )
