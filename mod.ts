@@ -635,10 +635,26 @@ async function installDependencies(project: Project, force = false, forcePlatfor
       for (const versionInfo of modrinthProject.versions) {
         if (version && version !== versionInfo.version_number) continue; // User specified a specific version
         if (!versionInfo.loaders.some(loader => compatibilityPlatforms.includes(loader))) continue; // Not compatible with the project's platforms
-        if (!force && !versionInfo.game_versions.some(gameVersion => compatibilityVersions.includes(gameVersion))) continue; // Not compatible with the project's game versions
+        
+        // When installing existing dependencies (not adding new ones), we want to install the exact version
+        // even if it's not compatible with current game versions, but show a warning
+        const gameVersionCompatible = versionInfo.game_versions.some(gameVersion => compatibilityVersions.includes(gameVersion));
+        if (!force && !gameVersionCompatible) {
+          if (version && version === versionInfo.version_number) {
+            // This is the exact version we want, but it's not compatible - show warning but continue
+            log.warn(`Warning: ${dependency} version ${version} may not be compatible with Minecraft ${compatibilityVersions.join(", ")}. Supported versions: ${versionInfo.game_versions.join(", ")}`);
+          } else {
+            continue; // Skip this version if we're looking for any compatible version
+          }
+        }
 
         file = versionInfo.files.find(f => f.primary);
         if (!file) continue;
+        
+        // If we found the exact version we wanted (even if incompatible), break here
+        if (version && version === versionInfo.version_number) {
+          break;
+        }
       }
 
       if (!file) throw new Error(`No compatible version found for ${dependency} in Modrinth. Please check your compatibility settings.`);
