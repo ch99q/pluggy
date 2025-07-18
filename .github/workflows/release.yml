@@ -51,7 +51,11 @@ jobs:
           # Replace the CLI_VERSION constant with the extracted version
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             sed -i 's/const CLI_VERSION = ".*";/const CLI_VERSION = "${{ steps.get_version.outputs.version }}";/' mod.ts
+          elif [[ "${{ runner.os }}" == "macOS" ]]; then
+            # macOS uses BSD sed which requires an extension for -i
+            sed -i '' 's/const CLI_VERSION = ".*";/const CLI_VERSION = "${{ steps.get_version.outputs.version }}";/' mod.ts
           else
+            # Linux uses GNU sed
             sed -i 's/const CLI_VERSION = ".*";/const CLI_VERSION = "${{ steps.get_version.outputs.version }}";/' mod.ts
           fi
           
