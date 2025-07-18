@@ -185,11 +185,11 @@ function generateClassPath(project: Project): string {
       if (dep.startsWith("file:")) {
         classPath.push(relative(ROOT_DIR, dep.slice(5)));
       } else if (dep.startsWith("maven:")) {
-        const [groupId, artifactId, version] = dep.slice(6).split(":");
-        if (!groupId || !artifactId || !version) {
-          throw new Error(`Invalid Maven dependency format: ${dep}. Expected format: "maven:groupId:artifactId:version".`);
+        const [groupId, artifactId, versionId] = dep.slice("maven:".length).split(":").flatMap(part => part.split("@"));
+        if (!groupId || !artifactId || !versionId) {
+          throw new Error(`Invalid Maven dependency format: ${dep}. Expected format: "maven:groupId:artifactId:versionId".`);
         }
-        const jarPath = join(LIBS_DIR, `${artifactId}-${version}.jar`);
+        const jarPath = join(LIBS_DIR, `${artifactId}-${versionId}.jar`);
         classPath.push(relative(ROOT_DIR, jarPath));
       } else {
         classPath.push(relative(ROOT_DIR, join(LIBS_DIR, `${id}-${dep}.jar`)));
@@ -202,8 +202,8 @@ function generateClassPath(project: Project): string {
     "@encoding": "UTF-8",
     classpath: {
       classpathentry: [
-        { "@kind": "src", "@path": SOURCE_DIR },
-        { "@kind": "output", "@path": BUILD_DIR },
+        { "@kind": "src", "@path": relative(ROOT_DIR, SOURCE_DIR) },
+        { "@kind": "output", "@path": relative(ROOT_DIR, BUILD_DIR) },
         { "@kind": "con", "@path": "org.eclipse.jdt.launching.JRE_CONTAINER" },
         { "@kind": "lib", "@path": relative(ROOT_DIR, join(LIBS_DIR, `${platform}-${version}.jar`)) },
         ...classPath.map((path) => ({
@@ -372,11 +372,15 @@ async function buildProject(project: Project): Promise<string> {
       ];
     }
     if (version.startsWith("maven:")) {
+      const [groupId, artifactId, versionId] = version.slice("maven:".length).split(":").flatMap(part => part.split("@"));
+      if (!groupId || !artifactId || !versionId) {
+        throw new Error(`Invalid Maven dependency format: ${version}. Expected format: "maven:groupId:artifactId@versionId".`);
+      }
       return [
         key,
-        version.slice(7),
+        version,
         await jarToObject(
-          version.slice(7),
+          join(LIBS_DIR, `${artifactId}-${versionId}.jar`),
           ["META-INF/**/*"].concat(shading?.exclude ?? []),
           shading?.include ? ["plugin.yml"].concat(shading?.include) : ["plugin.yml", "**/*"]
         )
@@ -413,6 +417,7 @@ async function buildProject(project: Project): Promise<string> {
       dependencyNames.add(yaml.name.trim());
     } else {
       if (project.shading?.[key]) continue;
+      if (jar.startsWith("maven:")) continue;
       log.warn(`Dependency ${key} does not have a valid plugin.yml file, will not be included in plugin.yml dependencies.`);
     }
   }
@@ -715,6 +720,7 @@ async function installDependencies(project: Project, force = false, forcePlatfor
           log.debug(`Overwriting existing Maven dependency ${artifactId} version ${versionId} in project.`);
         } else {
           log.debug(`Maven dependency ${artifactId} version ${versionId} already exists in project. Use --force to overwrite.`);
+          jars.add(existingJarPath);
           continue; // Skip if the file already exists and force is not set
         }
       }
@@ -729,6 +735,7 @@ async function installDependencies(project: Project, force = false, forcePlatfor
           if (response.ok) {
             const payload = new Uint8Array(await response.arrayBuffer());
             const filePath = join(LIBS_DIR, `${artifactId}-${versionId}.jar`);
+            jars.add(filePath);
             await Deno.mkdir(LIBS_DIR, { recursive: true });
             await Deno.writeFile(filePath, payload);
             found = true;
