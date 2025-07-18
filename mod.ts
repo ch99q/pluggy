@@ -539,10 +539,8 @@ async function addDependency(project: Project, dependency: string, version: stri
     // Resolve the plugin name from the jar's plugin.yml.
     const jarObject = await jarToObject(filePath, [], ["plugin.yml"]);
     const pluginYaml = jarObject["plugin.yml"];
-    if (!pluginYaml) throw new Error(`File ${filePath} does not contain a valid plugin.yml file.`);
-    const pluginData = parseYaml(pluginYaml) as any;
-    if (!pluginData.name) throw new Error(`File ${filePath} does not contain a valid plugin.yml file with a name field.`);
-    dependency = pluginData.name;
+    const pluginData = parseYaml(pluginYaml ?? "") as any;
+    dependency = pluginData?.name || basename(filePath, ".jar");
 
     project.dependencies[dependency] = `file:${relative(ROOT_DIR, filePath)}`;
     log.success(`Added local dependency "${dependency}" from ${filePath}.`);
