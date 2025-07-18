@@ -126,7 +126,10 @@ Pluggy projects are configured via `plugin.json` in the project root:
   "compatibility": {
     "versions": ["1.21.7", "1.21.3"],
     "platforms": ["paper", "bukkit"]
-  }
+  },
+  "registries": [
+    "https://repo1.maven.org/maven2/"
+  ]
 }
 ```
 
