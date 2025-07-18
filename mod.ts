@@ -299,6 +299,30 @@ async function buildProject(project: Project): Promise<string> {
   await Deno.remove(BUILD_DIR, { recursive: true }).catch(() => { });
   await Deno.mkdir(BUILD_DIR, { recursive: true });
 
+  // Copy the resources to the build directory.
+  if (project.resources && Object.keys(project.resources).length > 0) {
+    for (const [resource, relPath] of Object.entries(project.resources)) {
+      try {
+        const sourcePath = resolve(ROOT_DIR, relPath);
+        const destPath = join(BUILD_DIR, normalize(resource));
+
+        // Read the file content and apply template variables
+        const content = await Deno.readTextFile(sourcePath);
+        const processedContent = renameContent(content, project);
+
+        // Ensure the destination directory exists
+        await Deno.mkdir(dirname(destPath), { recursive: true });
+
+        // Write the processed content
+        await Deno.writeTextFile(destPath, processedContent);
+        log.debug(`Copied and processed resource ${resource} to ${destPath}`);
+      } catch (e) {
+        const error = e as Error;
+        throw new Error(`Failed to copy resource ${resource} from ${relPath}: ${error.message.split(":")[0]}`);
+      }
+    }
+  }
+
   // See if project has defined a plugin.yml file.
   const pluginYaml = Object.entries(project.resources)
     .map(([path, rel]) => [normalize(path), resolve(ROOT_DIR, rel)])
@@ -368,7 +392,8 @@ async function buildProject(project: Project): Promise<string> {
     if (yaml?.name) {
       dependencyNames.add(yaml.name.trim());
     } else {
-      throw new Error(`Dependency ${key} does not have a valid plugin.yml file. Please ensure the JAR file contains a valid plugin.yml.`);
+      if (project.shading?.[key]) continue;
+      log.warn(`Dependency ${key} does not have a valid plugin.yml file, will not be included in plugin.yml dependencies.`);
     }
   }
 
@@ -401,30 +426,6 @@ async function buildProject(project: Project): Promise<string> {
 
   const stdout = new TextDecoder().decode(result.stdout);
   if (stdout) log.debug(stdout);
-
-  // Copy the resources to the build directory.
-  if (project.resources && Object.keys(project.resources).length > 0) {
-    for (const [resource, relPath] of Object.entries(project.resources)) {
-      try {
-        const sourcePath = resolve(ROOT_DIR, relPath);
-        const destPath = join(BUILD_DIR, normalize(resource));
-
-        // Read the file content and apply template variables
-        const content = await Deno.readTextFile(sourcePath);
-        const processedContent = renameContent(content, project);
-
-        // Ensure the destination directory exists
-        await Deno.mkdir(dirname(destPath), { recursive: true });
-
-        // Write the processed content
-        await Deno.writeTextFile(destPath, processedContent);
-        log.debug(`Copied and processed resource ${resource} to ${destPath}`);
-      } catch (e) {
-        const error = e as Error;
-        throw new Error(`Failed to copy resource ${resource} from ${relPath}: ${error.message.split(":")[0]}`);
-      }
-    }
-  }
 
   // Create the jar file.
   await Deno.remove(DIST_DIR, { recursive: true }).catch(() => { });
