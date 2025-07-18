@@ -105,6 +105,7 @@ interface Project {
     versions: string[];
     platforms: string[];
   };
+  registries?: Array<string>;
 }
 
 const DEFAULT_PROJECT: Project = {
@@ -336,6 +337,7 @@ async function buildProject(project: Project): Promise<string> {
     main: project.main,
     description: project.description,
     authors: project.authors,
+    registries: project.registries || [],
   }
 
   const singleAuthor = parsedYaml?.author;
@@ -529,7 +531,42 @@ async function searchModrinth(query: string, limit = 10, offset = 0): Promise<Mo
 }
 
 async function addDependency(project: Project, dependency: string, version: string, force = false, beta = false): Promise<void> {
-  if (dependency && (dependency.startsWith("/") || dependency.startsWith("./") || dependency.startsWith("../"))) {
+  if (dependency && dependency.startsWith("maven:")) {
+    dependency = dependency.slice(6); // Remove "maven:" prefix
+    // Example dependency: "com.example:my-plugin@1.0.0"
+    const [groupId, artifactId] = dependency.split(":");
+    if (!groupId || !artifactId || !version) {
+      throw new Error(`Invalid Maven dependency format: ${dependency}. Expected format: "groupId:artifactId@version".`);
+    }
+
+    const registries = new Set(project.registries || []);
+    registries.add("https://repo1.maven.org/maven2/");
+
+    log.debug(`Searching for Maven dependency "${artifactId}" version "${version}" in registries: ${Array.from(registries).join(", ")}`);
+
+    // Check if the artifact exists in the specified registries.
+    const artifactPath = `${groupId.replace(/\./g, "/")}/${artifactId}/${version}/${artifactId}-${version}.jar`;
+    for (const registry of registries) {
+      const url = new URL(artifactPath, registry);
+      try {
+        const response = await fetch(url);
+        if (response.ok) {
+          project.dependencies[artifactId] = `maven:${groupId}:${artifactId}@${version}`;
+          log.success(`Added Maven dependency "${artifactId}" version "${version}" from ${url.href}.`);
+          await Deno.writeTextFile(CONFIG_FILE, JSON.stringify(project, null, 2));
+          return;
+        }
+      } catch (e) {
+        const error = e as Error;
+        log.debug(`Failed to fetch Maven dependency from ${url.href}: ${error.message}`);
+      }
+    }
+    throw new Error(`Maven dependency "${artifactId}" version "${version}" not found in specified registries: ${Array.from(registries).join(", ")}.`);
+  }
+
+  if (dependency && (dependency.startsWith("file:") || dependency.startsWith("/") || dependency.startsWith("./") || dependency.startsWith("../"))) {
+    if (dependency.startsWith("file:")) dependency = dependency.slice(5); // Remove "file:" prefix
+
     // Local file dependency, add reference to project
     const filePath = resolve(ROOT_DIR, dependency);
     if (!await Deno.stat(filePath).then(() => true).catch(() => false)) {
@@ -641,6 +678,53 @@ async function installDependencies(project: Project, force = false, forcePlatfor
 
   for (const [dependency, version] of Object.entries(project.dependencies)) {
     if (!dependency) continue; // Skip empty dependencies
+
+    if (version.startsWith("maven:")) {
+      // Check if the dependency is a Maven dependency
+      const [groupId, artifactId, versionId] = version.slice(6).split(":").flatMap(part => part.split("@"));
+      if (!groupId || !artifactId || !versionId)
+        throw new Error(`Invalid Maven dependency format: ${version}. Expected format: "maven:groupId:artifactId@version".`);
+
+      const registries = new Set(project.registries || []);
+      registries.add("https://repo1.maven.org/maven2/");
+
+      log.debug(`Searching for Maven dependency "${artifactId}" version "${versionId}" in registries: ${Array.from(registries).join(", ")}`);
+
+      // Check if the artifact file exists in the libs directory
+      const existingJarPath = join(LIBS_DIR, `${artifactId}-${versionId}.jar`);
+      if (await Deno.stat(existingJarPath).then(() => true).catch(() => false)) {
+        if (force) {
+          log.debug(`Overwriting existing Maven dependency ${artifactId} version ${versionId} in project.`);
+        } else {
+          log.debug(`Maven dependency ${artifactId} version ${versionId} already exists in project. Use --force to overwrite.`);
+          continue; // Skip if the file already exists and force is not set
+        }
+      }
+
+      // Check if the artifact exists in the specified registries.
+      const artifactPath = `${groupId.replace(/\./g, "/")}/${artifactId}/${versionId}/${artifactId}-${versionId}.jar`;
+      let found = false;
+      for (const registry of registries) {
+        const url = new URL(artifactPath, registry);
+        try {
+          const response = await fetch(url);
+          if (response.ok) {
+            const payload = new Uint8Array(await response.arrayBuffer());
+            const filePath = join(LIBS_DIR, `${artifactId}-${versionId}.jar`);
+            await Deno.mkdir(LIBS_DIR, { recursive: true });
+            await Deno.writeFile(filePath, payload);
+            found = true;
+            break;
+          }
+        } catch (error) {
+          log.error(`Failed to fetch ${url}: ${error}`);
+        }
+      }
+
+      if (found) continue;
+
+      throw new Error(`Maven dependency "${artifactId}" version "${versionId}" not found in specified registries: ${Array.from(registries).join(", ")}.`);
+    }
 
     if (version.startsWith("file:")) {
       const filePath = resolve(ROOT_DIR, version.slice(5));
@@ -903,9 +987,10 @@ if (import.meta.main) {
             log.info(`  --beta ${italic("- Include beta and alpha versions in the search.")}`);
             log.info("");
             log.info(dim("Examples:"));
-            log.info(`  install worldedit ${italic("- Add the latest version of WorldEdit.")}`);
-            log.info(`  install worldedit@7.2.6 ${italic("- Add WorldEdit version 7.2.6.")}`);
-            log.info(`  install ./libs/worldedit.jar ${italic("- Reference WorldEdit to a local file.")}`);
+            log.info(`  install worldedit ${italic("- Add the latest version of a plugin.")}`);
+            log.info(`  install worldedit@7.2.6 ${italic("- Add a specific version of a plugin.")}`);
+            log.info(`  install maven:net.kyori:adventure-api@4.10.0 ${italic("- Add a Maven dependency.")}`);
+            log.info(`  install ./libs/worldedit.jar ${italic("- Reference a local JAR file.")}`);
             log.info("");
             Deno.exit(0);
           }

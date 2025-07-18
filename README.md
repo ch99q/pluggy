@@ -67,6 +67,9 @@ pluggy install placeholderapi@2.11.6
 # Add local JAR file
 pluggy install ./libs/custom-library.jar
 
+# Add Maven dependency
+pluggy install maven:net.kyori:adventure-api@4.22.0
+
 # Include pre-release versions in search
 pluggy install some-plugin --beta
 
