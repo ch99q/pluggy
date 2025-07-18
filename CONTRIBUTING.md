@@ -5,7 +5,7 @@ Thank you for your interest in contributing to Pluggy! This document provides gu
 ## Development Setup
 
 ### Prerequisites
-- [Deno](https://deno.land/) v2.x or later
+- [Deno](https://deno.land/) v2.4.1 or later
 - Git
 - A text editor or IDE
 
@@ -38,6 +38,9 @@ Thank you for your interest in contributing to Pluggy! This document provides gu
    
    # Lint code
    deno lint
+   
+   # Type check
+   deno check mod.ts
    ```
 
 ## Code Style
@@ -47,6 +50,7 @@ Thank you for your interest in contributing to Pluggy! This document provides gu
 - Use meaningful variable and function names
 - Add JSDoc comments for public APIs
 - Keep functions focused and reasonably sized
+- Leverage modern Deno 2.x features like JSR imports and enhanced TypeScript support
 
 ## Testing
 

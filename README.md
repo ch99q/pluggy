@@ -188,7 +188,7 @@ This allows you to use dynamic values in any resource file (config.yml, plugin.y
 ## Development
 
 ### Prerequisites
-- Deno 2.x or later
+- Deno 2.4.1 or later
 - Git
 
 ### Building from Source
@@ -202,10 +202,10 @@ This generates a self-contained executable at `./bin/pluggy`.
 
 ### Architecture Notes
 
-Pluggy is implemented in TypeScript using Deno's runtime and standard library. Key architectural decisions:
+Pluggy is implemented in TypeScript using Deno 2.x runtime and standard library. Key architectural decisions:
 
 - **Single binary distribution**: Compiled to native executable for each platform
-- **Zero external dependencies**: All functionality implemented using Deno standard library
+- **Zero external dependencies**: All functionality implemented using Deno standard library and JSR packages
 - **Modrinth API integration**: Direct REST API communication for plugin discovery
 - **Template-based code generation**: Parameterized file templates for project scaffolding
 
