@@ -18,11 +18,12 @@ const CLI_VERSION = "0.0.0";
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
 
-const ROOT_DIR = Deno.cwd();
-const DIST_DIR = join(ROOT_DIR, "dist");
-const LIBS_DIR = join(ROOT_DIR, "libs");
-const BUILD_DIR = join(ROOT_DIR, "bin");
-const SOURCE_DIR = join(ROOT_DIR, "src");
+let ROOT_DIR = Deno.cwd();
+let CONFIG_FILE = join(ROOT_DIR, "plugin.json");
+let DIST_DIR = join(ROOT_DIR, "dist");
+let LIBS_DIR = join(ROOT_DIR, "libs");
+let BUILD_DIR = join(ROOT_DIR, "bin");
+let SOURCE_DIR = join(ROOT_DIR, "src");
 
 const rootArgs = parseArgs(Deno.args, {
   boolean: ["no-color", "verbose", "help", "version"],
@@ -30,9 +31,6 @@ const rootArgs = parseArgs(Deno.args, {
   alias: {
     v: "verbose",
     V: "version",
-  },
-  default: {
-    "config-file": join(ROOT_DIR, "plugin.json"),
   }
 });
 
@@ -153,7 +151,7 @@ async function initProject(args: Partial<Project> = {}): Promise<void> {
   if (!project.main || !/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(project.main) || !project.main.includes("."))
     throw new Error("Invalid main class name. It must be a valid Java class name (e.g., com.example.Main).");
 
-  const projectFilePath = rootArgs["config-file"];
+  const projectFilePath = CONFIG_FILE;
   const projectFileContent = JSON.stringify(project, null, 2);
   await Deno.writeTextFile(projectFilePath, projectFileContent);
 
@@ -373,14 +371,14 @@ async function buildProject(project: Project): Promise<string> {
       try {
         const sourcePath = resolve(ROOT_DIR, relPath);
         const destPath = join(BUILD_DIR, normalize(resource));
-        
+
         // Read the file content and apply template variables
         const content = await Deno.readTextFile(sourcePath);
         const processedContent = renameContent(content, project);
-        
+
         // Ensure the destination directory exists
         await Deno.mkdir(dirname(destPath), { recursive: true });
-        
+
         // Write the processed content
         await Deno.writeTextFile(destPath, processedContent);
         log.debug(`Copied and processed resource ${resource} to ${destPath}`);
@@ -510,7 +508,7 @@ async function addDependency(project: Project, dependency: string, version: stri
 
     project.dependencies[dependency] = `file:${relative(ROOT_DIR, filePath)}`;
     log.success(`Added local dependency "${dependency}" from ${filePath}.`);
-    await Deno.writeTextFile(rootArgs["config-file"], JSON.stringify(project, null, 2));
+    await Deno.writeTextFile(CONFIG_FILE, JSON.stringify(project, null, 2));
     return;
   }
 
@@ -546,7 +544,7 @@ async function addDependency(project: Project, dependency: string, version: stri
     }
 
     project.dependencies[dependency] = versionInfo.version_number;
-    return await Deno.writeTextFile(rootArgs["config-file"], JSON.stringify(project, null, 2));
+    return await Deno.writeTextFile(CONFIG_FILE, JSON.stringify(project, null, 2));
   }
 }
 
@@ -561,7 +559,7 @@ async function removeDependency(project: Project, dependency: string): Promise<v
   delete project.dependencies[dependency];
 
   // Update the project file
-  await Deno.writeTextFile(rootArgs["config-file"], JSON.stringify(project, null, 2));
+  await Deno.writeTextFile(CONFIG_FILE, JSON.stringify(project, null, 2));
 
   // Remove the JAR file from libs directory if it exists
   if (!version.startsWith("file:")) {
@@ -711,8 +709,20 @@ if (import.meta.main) {
             Deno.exit(0);
           }
 
+          // Ensure the root directory exists
+          const TARGET_DIR = args._?.[0] ? args._?.[0] as string : ROOT_DIR;
+
+          log.debug(`Setting project root directory to ${TARGET_DIR}`);
+
+          ROOT_DIR = TARGET_DIR;
+          CONFIG_FILE = join(ROOT_DIR, "plugin.json");
+          BUILD_DIR = join(ROOT_DIR, "build");
+          DIST_DIR = join(ROOT_DIR, "dist");
+          SOURCE_DIR = join(ROOT_DIR, "src");
+          LIBS_DIR = join(ROOT_DIR, "libs");
+
           if (!args.yes) {
-            if (await Deno.stat(join(ROOT_DIR, "plugin.json")).then(() => true).catch(() => false)) {
+            if (await Deno.stat(join(ROOT_DIR)).then(() => true).catch(() => false)) {
               if (!globalThis.confirm(green("?") + " A project already exists in this directory. Do you want to overwrite it?")) {
                 log.info("Project initialization cancelled.");
                 Deno.exit(0);
@@ -724,11 +734,36 @@ if (import.meta.main) {
               }
             }
 
-            args.name = args.name || log.prompt("Enter the project name", DEFAULT_PROJECT.name);
+            args.name = args.name || args._[1] as string || log.prompt("Enter the project name", DEFAULT_PROJECT.name);
             args.version = args.version || log.prompt("Enter the project version", DEFAULT_PROJECT.version);
             args.main = args.main || log.prompt("Enter the main class (e.g., com.example.Main)", DEFAULT_PROJECT.main);
             args.description = args.description || log.prompt("Enter the project description", DEFAULT_PROJECT.description);
           }
+
+
+          if (args.name && !/^[a-zA-Z0-9_]+$/.test(args.name)) {
+            log.error("Project name can only contain alphanumeric characters and underscores.");
+            Deno.exit(1);
+          }
+
+          if (args.version && !/^\d+\.\d+\.\d+(-SNAPSHOT)?$/.test(args.version)) {
+            log.error("Project version must be in the format X.Y.Z or X.Y.Z-SNAPSHOT.");
+            Deno.exit(1);
+          }
+
+          if (args.main && !/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(args.main)) {
+            log.error("Main class must be a valid Java class name (e.g., com.example.Main).");
+            Deno.exit(1);
+          }
+
+          if (args.description && args.description.length > 200) {
+            log.error("Project description cannot exceed 200 characters.");
+            Deno.exit(1);
+          }
+
+          log.info(`Initializing project "${args.name}"...`);
+
+          await Deno.mkdir(ROOT_DIR, { recursive: true });
 
           await initProject({
             name: args.name,
@@ -753,7 +788,7 @@ if (import.meta.main) {
             Deno.exit(0);
           }
 
-          const projectFilePath = rootArgs["config-file"];
+          const projectFilePath = CONFIG_FILE;
           if (!await Deno.stat(projectFilePath).then(() => true).catch(() => false)) {
             log.error(`Project file not found at ${projectFilePath}. Please run ${CLI_NAME} init first.`);
             Deno.exit(1);
@@ -794,7 +829,7 @@ if (import.meta.main) {
             Deno.exit(0);
           }
 
-          const projectFilePath = rootArgs["config-file"];
+          const projectFilePath = CONFIG_FILE;
           if (!await Deno.stat(projectFilePath).then(() => true).catch(() => false)) {
             log.error(`Project file not found at ${projectFilePath}. Please run ${CLI_NAME} init first.`);
             Deno.exit(1);
@@ -847,7 +882,7 @@ if (import.meta.main) {
             Deno.exit(0);
           }
 
-          const projectFilePath = rootArgs["config-file"];
+          const projectFilePath = CONFIG_FILE;
           if (!await Deno.stat(projectFilePath).then(() => true).catch(() => false)) {
             log.error(`Project file not found at ${projectFilePath}. Please run ${CLI_NAME} init first.`);
             Deno.exit(1);
@@ -907,7 +942,7 @@ if (import.meta.main) {
             Deno.exit(0);
           }
 
-          const projectFilePath = rootArgs["config-file"];
+          const projectFilePath = CONFIG_FILE;
           if (!await Deno.stat(projectFilePath).then(() => true).catch(() => false)) {
             log.error(`Project file not found at ${projectFilePath}. Please run ${CLI_NAME} init first.`);
             Deno.exit(1);
