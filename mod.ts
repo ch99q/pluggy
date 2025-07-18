@@ -515,13 +515,17 @@ async function addDependency(project: Project, dependency: string, version: stri
   const modrinthProject = await getModrinthProject(dependency).catch(() => null);
   if (!modrinthProject) throw new Error(`Unable to find ${dependency} on Modrinth, try manually adding the file and do ${CLI_NAME} install ${dependency}@file:./libs/${dependency}.jar`);
 
+  // Check if the project has a version of the specified version.
+  if(!modrinthProject.versions.some(v => v.version_number === version)) 
+    throw new Error(`Version ${version} of project ${dependency} not found on Modrinth. Available versions: ${modrinthProject.versions.map(v => v.version_number).join(", ")}`);
+
   const compatibilityVersions = project.compatibility.versions;
   const compatibilityPlatforms = project.compatibility.platforms;
   // Find the latest compatible version.
   for (const versionInfo of modrinthProject.versions) {
     if (version && version !== versionInfo.version_number) continue; // User specified a specific version
     if (!versionInfo.loaders.some(loader => compatibilityPlatforms.includes(loader))) continue; // Not compatible with the project's platforms
-    if (!versionInfo.game_versions.some(gameVersion => compatibilityVersions.includes(gameVersion))) continue; // Not compatible with the project's game versions
+    if (!force && !versionInfo.game_versions.some(gameVersion => compatibilityVersions.includes(gameVersion))) continue; // Not compatible with the project's game versions (skip if force is true)
 
     const file = versionInfo.files.find(f => f.primary);
     if (!file) continue;
@@ -546,6 +550,9 @@ async function addDependency(project: Project, dependency: string, version: stri
     project.dependencies[dependency] = versionInfo.version_number;
     return await Deno.writeTextFile(CONFIG_FILE, JSON.stringify(project, null, 2));
   }
+
+  // If we reach here, no compatible version was found
+  throw new Error(`No compatible version found for "${dependency}" that supports Minecraft ${compatibilityVersions.join(", ")} on platforms ${compatibilityPlatforms.join(", ")}. The plugin may not support these versions yet.`);
 }
 
 async function removeDependency(project: Project, dependency: string): Promise<void> {
@@ -628,7 +635,7 @@ async function installDependencies(project: Project, force = false, forcePlatfor
       for (const versionInfo of modrinthProject.versions) {
         if (version && version !== versionInfo.version_number) continue; // User specified a specific version
         if (!versionInfo.loaders.some(loader => compatibilityPlatforms.includes(loader))) continue; // Not compatible with the project's platforms
-        if (!versionInfo.game_versions.some(gameVersion => compatibilityVersions.includes(gameVersion))) continue; // Not compatible with the project's game versions
+        if (!force && !versionInfo.game_versions.some(gameVersion => compatibilityVersions.includes(gameVersion))) continue; // Not compatible with the project's game versions
 
         file = versionInfo.files.find(f => f.primary);
         if (!file) continue;
