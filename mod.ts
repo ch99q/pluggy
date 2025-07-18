@@ -11,7 +11,9 @@ import { bold, dim, green, italic, log } from "./logging.ts";
 import { checkPlatform, downloadSnapshot, getPlatformRepository, Platform, PLATFORMS, resolveRepository } from "./platform.ts";
 
 import { parse as parseYaml, stringify as stringifyYaml } from "jsr:@std/yaml";
-import { ZipReader, BlobWriter } from "jsr:@zip-js/zip-js";
+
+// @deno-types="npm:@types/yauzl"
+import { open as openZip, Entry } from 'npm:yauzl';
 
 const CLI_NAME = "pluggy";
 const CLI_VERSION = "0.0.0";
@@ -82,6 +84,8 @@ const getActivePlatform = (project: Project): {
 import defaultPackage from "./static/package.java" with { type: "text" };
 import defaultConfig from "./static/config.yml" with { type: "text" };
 import { parse, stringify } from "jsr:@libs/xml";
+import { Buffer } from "node:buffer";
+import { ReadStream } from "node:fs";
 
 interface Shading {
   exclude?: string[];
@@ -236,24 +240,57 @@ async function refreshEclipse(project: Project): Promise<void> {
 //            Build System
 // ––––––––––––––––––––––––––––––––––––––––
 
-async function jarToObject(jarPath: string, exlcude?: string[], include?: string[]): Promise<Record<string, () => Promise<string>>> {
-  const file = await Deno.open(jarPath, { read: true });
-  const reader = new ZipReader(file);
-  const entries = (await Array.fromAsync(await reader.getEntries())).map((entry) => {
-    if (exlcude && exlcude.some(pattern => globToRegExp(pattern).test(entry.filename))) return null; // Skip excluded entries
-    if (include && !include.some(pattern => globToRegExp(pattern).test(entry.filename))) return null; // Skip non-included entries
-    if (entry.filename.endsWith("/")) return null; // Skip directories
-    return [entry.filename, async () => {
-      const writer = new BlobWriter();
-      const data = await entry.getData?.(writer);;
-      const buffer = await data?.arrayBuffer();
-      if (!buffer) throw new Error(`Failed to read entry ${entry.filename} from JAR file ${jarPath}`);
-      return new TextDecoder().decode(buffer);
-    }]
-  }).filter((entry) => entry !== null);
-  return Object.fromEntries(entries);
-}
+export function jarToObject(jarPath: string, exclude?: string[], include?: string[]): Promise<Record<string, string>> {
+  return new Promise((resolve, reject) => {
+    openZip(jarPath, { lazyEntries: true }, (err, zipfile) => {
+      if (err) return reject(err);
 
+      const result: Record<string, string> = {};
+
+      zipfile.readEntry();
+
+      zipfile.on('entry', (entry: Entry) => {
+        const name = entry.fileName;
+
+        // skip directories
+        if (name.endsWith('/')) {
+          zipfile.readEntry();
+          return;
+        }
+
+        // exclude patterns
+        if (exclude?.some(pat => globToRegExp(pat).test(name))) {
+          zipfile.readEntry();
+          return;
+        }
+
+        // include patterns
+        if (include && !include.some(pat => globToRegExp(pat).test(name))) {
+          zipfile.readEntry();
+          return;
+        }
+
+        zipfile.openReadStream(entry, (errStream, stream) => {
+          if (errStream) return reject(errStream);
+
+          const chunks: Buffer[] = [];
+          stream.on('data', chunk => {
+            if (Buffer.isBuffer(chunk)) chunks.push(chunk);
+          });
+          stream.once('error', reject);
+          stream.once('end', () => {
+            const key = basename(name);
+            result[key] = Buffer.concat(chunks).toString('utf-8');
+            zipfile.readEntry();
+          });
+        });
+      });
+
+      zipfile.once('end', () => resolve(result));
+      zipfile.on('error', reject);
+    });
+  });
+}
 
 async function buildProject(project: Project): Promise<string> {
   const { version } = getActivePlatform(project);
@@ -288,7 +325,7 @@ async function buildProject(project: Project): Promise<string> {
   });
 
   // Find dependencies and extract their names from their jars.
-  const dependencies: Array<[string, string, Record<string, () => Promise<string>>]> = await Promise.all(Object.entries(project.dependencies).map(async ([key, version]) => {
+  const dependencies: Array<[string, string, Record<string, string>]> = await Promise.all(Object.entries(project.dependencies).map(async ([key, version]) => {
     const shading = project.shading?.[key] ?? { include: ['plugin.yml'] };
     if (version.startsWith("file:")) {
       return [
@@ -314,7 +351,7 @@ async function buildProject(project: Project): Promise<string> {
 
   const dependencyNames = new Set<string>(pluginYamlObject.dependencies?.split(",").map((v: string) => v.trim()) || []);
   for (const [key, jar, jarObject] of dependencies) {
-    const yaml = parseYaml(await jarObject?.["plugin.yml"]?.() ?? "") as any;
+    const yaml = parseYaml(jarObject?.["plugin.yml"] ?? "") as any;
     const shading = project.shading?.[key];
     log.debug(`Processing dependency ${key} from ${jar}`);
     if (shading) {
@@ -324,7 +361,7 @@ async function buildProject(project: Project): Promise<string> {
         const destPath = join(BUILD_DIR, file);
         log.debug(`Shading file ${file} to ${destPath}`);
         await Deno.mkdir(dirname(destPath), { recursive: true });
-        await Deno.writeTextFile(destPath, await content());
+        await Deno.writeTextFile(destPath, content);
         log.debug(`Shaded file ${file} to ${destPath}`);
       }
     }
@@ -500,7 +537,7 @@ async function addDependency(project: Project, dependency: string, version: stri
 
     // Resolve the plugin name from the jar's plugin.yml.
     const jarObject = await jarToObject(filePath, [], ["plugin.yml"]);
-    const pluginYaml = await jarObject["plugin.yml"]?.();
+    const pluginYaml = jarObject["plugin.yml"];
     if (!pluginYaml) throw new Error(`File ${filePath} does not contain a valid plugin.yml file.`);
     const pluginData = parseYaml(pluginYaml) as any;
     if (!pluginData.name) throw new Error(`File ${filePath} does not contain a valid plugin.yml file with a name field.`);
@@ -516,7 +553,7 @@ async function addDependency(project: Project, dependency: string, version: stri
   if (!modrinthProject) throw new Error(`Unable to find ${dependency} on Modrinth, try manually adding the file and do ${CLI_NAME} install ${dependency}@file:./libs/${dependency}.jar`);
 
   // Check if the project has a version of the specified version.
-  if(!modrinthProject.versions.some(v => v.version_number === version)) 
+  if (!modrinthProject.versions.some(v => v.version_number === version))
     throw new Error(`Version ${version} of project ${dependency} not found on Modrinth. Available versions: ${modrinthProject.versions.map(v => v.version_number).join(", ")}`);
 
   const compatibilityVersions = project.compatibility.versions;
@@ -635,7 +672,7 @@ async function installDependencies(project: Project, force = false, forcePlatfor
       for (const versionInfo of modrinthProject.versions) {
         if (version && version !== versionInfo.version_number) continue; // User specified a specific version
         if (!versionInfo.loaders.some(loader => compatibilityPlatforms.includes(loader))) continue; // Not compatible with the project's platforms
-        
+
         // When installing existing dependencies (not adding new ones), we want to install the exact version
         // even if it's not compatible with current game versions, but show a warning
         const gameVersionCompatible = versionInfo.game_versions.some(gameVersion => compatibilityVersions.includes(gameVersion));
@@ -650,7 +687,7 @@ async function installDependencies(project: Project, force = false, forcePlatfor
 
         file = versionInfo.files.find(f => f.primary);
         if (!file) continue;
-        
+
         // If we found the exact version we wanted (even if incompatible), break here
         if (version && version === versionInfo.version_number) {
           break;
