@@ -470,7 +470,7 @@ async function buildProject(project: Project): Promise<string> {
   const jarStdout = new TextDecoder().decode(jarResult.stdout);
   if (jarStdout) log.debug(jarStdout);
 
-  log.success(`Project "${project.name}" built successfully! JAR file created at ${relative(ROOT_DIR, join(DIST_DIR, `${project.name}-${project.version}.jar`))}`);
+  log.success(`Project "${project.name}" built successfully! Plugin file created at ${relative(ROOT_DIR, join(DIST_DIR, `${project.name}-${project.version}.jar`))}`);
   return join(DIST_DIR, `${project.name}-${project.version}.jar`);
 }
 
