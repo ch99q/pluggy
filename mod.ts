@@ -784,7 +784,7 @@ if (import.meta.main) {
             Deno.exit(1);
           }
 
-          log.info(`Initializing project "${args.name}"...`);
+          args.name = args.name || basename(ROOT_DIR);
 
           await Deno.mkdir(ROOT_DIR, { recursive: true });
 
@@ -794,39 +794,6 @@ if (import.meta.main) {
             main: args.main,
             description: args.description,
           });
-
-          Deno.exit(0);
-          break;
-        }
-        case "dev": {
-          if (rootArgs.help) {
-            log.info(`Pluggy (v${CLI_VERSION}) - A CLI for developing for Minecraft using Modrinth`);
-            log.info("");
-            log.info(dim("Usage:"));
-            log.info(`  ${bold(CLI_NAME)} dev [options]`);
-            log.info("");
-            log.info(dim("Options:"));
-            log.info(`  -h, --help ${italic("- Show this help message.")}`);
-            log.info("");
-            Deno.exit(0);
-          }
-
-          const projectFilePath = CONFIG_FILE;
-          if (!await Deno.stat(projectFilePath).then(() => true).catch(() => false)) {
-            log.error(`Project file not found at ${projectFilePath}. Please run ${CLI_NAME} init first.`);
-            Deno.exit(1);
-          }
-
-          const projectFileContent = await Deno.readTextFile(projectFilePath);
-          const project: Project = JSON.parse(projectFileContent);
-
-          log.info(`Starting development server for "${project.name}"...`);
-          log.warn("Development server functionality is not yet implemented.");
-          log.info("This would typically:");
-          log.info("  - Watch for file changes");
-          log.info("  - Auto-compile on changes");
-          log.info("  - Hot-reload the plugin");
-          log.info("  - Start a test server");
 
           Deno.exit(0);
           break;
