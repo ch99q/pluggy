@@ -14,12 +14,12 @@ A command-line tool for Minecraft plugin development that streamlines project in
 
 ## Overview
 
-Pluggy is built around the Modrinth ecosystem, providing a cohesive workflow from project initialization through dependency resolution to final JAR packaging. Rather than being just another build tool, Pluggy leverages Modrinth as the primary source for plugin discovery, dependency management, and version compatibility—making modern Minecraft plugin development faster and more reliable.
+Pluggy is built around the Modrinth ecosystem, providing a cohesive workflow from project initialization through dependency resolution to final JAR packaging. Rather than being just another build tool, Pluggy leverages Modrinth as the primary source for plugin discovery, dependency management, and version compatibility, making modern Minecraft plugin development faster and more reliable.
 
 ## Key Features
 
 - **Project Scaffolding**: Generates complete project structure with proper Java package hierarchy
-- **Modrinth Integration**: Direct plugin search, installation, and version management from Modrinth
+- **Modrinth**: Direct plugin search, installation, and version management from Modrinth
 - **Build Automation**: Handles compilation, resource bundling, and JAR creation
 - **Dependency Shading**: Configurable dependency inclusion/exclusion patterns
 - **IDE Integration**: Automatic Eclipse project file generation with proper classpaths
@@ -28,12 +28,12 @@ Pluggy is built around the Modrinth ecosystem, providing a cohesive workflow fro
 ## Installation
 
 ### Windows (PowerShell)
-```powershell
+```
 irm https://raw.githubusercontent.com/ch99q/pluggy/main/install.ps1 | iex
 ```
 
 ### Unix-like Systems (macOS, Linux)
-```bash
+```
 curl -fsSL https://raw.githubusercontent.com/ch99q/pluggy/main/install.sh | bash
 ```
 
