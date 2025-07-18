@@ -92,6 +92,7 @@ jobs:
             --allow-write \
             --allow-run \
             --unstable-raw-imports \
+            --include=static \
             --target x86_64-unknown-linux-gnu \
             --output=${{ matrix.artifact }} \
             ./mod.ts
