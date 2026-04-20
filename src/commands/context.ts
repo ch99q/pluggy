@@ -25,7 +25,17 @@ export interface ScopeOptions {
   commandName: string;
 }
 
-/** One target for a workspace-aware command: a workspace node, or the root. */
+/**
+ * One target for a workspace-aware command. `name` and `project` come from
+ * either a workspace node or the standalone-project root depending on the
+ * scope:
+ *   - In a workspace context: workspace name + workspace project.
+ *   - In a standalone context: root project name + root project.
+ *
+ * Use `ResolvedScope.spansAllWorkspaces` to tell which form a target list
+ * represents. The `name` is always meaningful as a human label (e.g. for
+ * lockfile `declaredBy` or per-target output) regardless of source.
+ */
 export interface ScopeTarget {
   name: string;
   project: ResolvedProject;

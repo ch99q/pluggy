@@ -40,7 +40,6 @@ export interface SearchOptions {
   page: number;
   platform?: string;
   version?: string;
-  beta?: boolean;
   json?: boolean;
 }
 
@@ -64,14 +63,6 @@ export async function doSearch(query: string, options: SearchOptions): Promise<S
   const facets: string[][] = [["project_type:plugin"]];
   if (options.platform) facets.push([`categories:${options.platform}`]);
   if (options.version) facets.push([`versions:${options.version}`]);
-
-  // Modrinth has no project-level pre-release filter; `--beta` only affects
-  // resolve time. Surface the limitation rather than silently dropping it.
-  if (options.beta && !options.json) {
-    log.warn(
-      "--beta has no effect on search (no project-level pre-release filter); it's honored later at resolve time",
-    );
-  }
 
   const params = new URLSearchParams();
   params.set("query", query);
@@ -169,7 +160,6 @@ export function searchCommand(): Command {
     .option("--page <page>", "Page number (default: 0).", parseInteger, 0)
     .option("--platform <name>", "Filter by platform.", parsePlatform)
     .option("--version <semver>", "Filter by Minecraft version.", parseSemver)
-    .option("--beta", "Include pre-releases.")
     .action(async function action(this: Command, query: string, options) {
       const globalOpts = this.optsWithGlobals();
       await doSearch(query, {
@@ -177,7 +167,6 @@ export function searchCommand(): Command {
         page: options.page,
         platform: options.platform,
         version: options.version,
-        beta: options.beta,
         json: globalOpts.json,
       });
     });

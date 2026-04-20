@@ -40,13 +40,26 @@ export function resolveWorkspace(
     return Promise.reject(err as Error);
   }
 
-  const declaredVersion = ws.project.version ?? version;
-  const jarPath = join(ws.root, "bin", `${ws.name}-${declaredVersion}.jar`);
+  // The jar path is derived from a concrete version. The dep's declared
+  // version (often "*") is too loose to use as a filename, so the workspace
+  // must declare its own. Throw early with a clear pointer rather than emit
+  // a path like `bin/api-*.jar` that won't match anything build produces.
+  const concreteVersion =
+    ws.project.version !== undefined ? ws.project.version : version !== "*" ? version : undefined;
+  if (concreteVersion === undefined) {
+    return Promise.reject(
+      new Error(
+        `workspace "${name}" has no concrete version — set "version" in ${ws.project.projectFile} so its built jar has a stable filename`,
+      ),
+    );
+  }
+
+  const jarPath = join(ws.root, "bin", `${ws.name}-${concreteVersion}.jar`);
 
   const source: ResolvedSource = {
     kind: "workspace",
     name,
-    version: declaredVersion,
+    version: concreteVersion,
   };
 
   return Promise.resolve({

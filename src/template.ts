@@ -1,6 +1,11 @@
 /**
  * `${project.x}` substitution used by `init` and the build pipeline to seed
  * template files with values from `project.json`.
+ *
+ * Escape hatch: prefix a placeholder with a backslash to keep it literal —
+ * `\${anything}` emits as `${anything}`, with the leading backslash stripped.
+ * Useful for YAML / JSON files that legitimately contain `${...}` syntax
+ * (e.g. plugin configs that reference their own placeholders at runtime).
  */
 
 /**
@@ -32,15 +37,28 @@ export function generateReplacementMap(
   return map;
 }
 
-/** Substitute every `${dotted.key}` in `template` from `obj`. */
+/**
+ * Substitute every `${dotted.key}` in `template` with the matching value
+ * from `obj`. Occurrences preceded by a backslash (`\${...}`) are treated
+ * as literal — the backslash is stripped and the placeholder is emitted
+ * unchanged. Unknown keys are left as-is.
+ */
 export function replace(template: string, obj: Record<string, unknown>): string {
   const replacementMap = generateReplacementMap(obj);
   let result = template;
 
   for (const [key, value] of replacementMap.entries()) {
-    const regex = new RegExp(`\\$\\{${key}\\}`, "g");
+    // Negative lookbehind skips backslash-escaped occurrences.
+    const regex = new RegExp(`(?<!\\\\)\\$\\{${escapeRegExp(key)}\\}`, "g");
     result = result.replace(regex, value);
   }
 
+  // Strip the escape backslash so `\${foo}` emits `${foo}` literally.
+  result = result.replace(/\\(\$\{[^}]*\})/g, "$1");
+
   return result;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

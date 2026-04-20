@@ -494,11 +494,10 @@ Not workspace-aware — operates on the passed identifier.
 | `--page <n>`         | int    | 0       | Zero-indexed page                                     |
 | `--platform <name>`  | enum   | —       | Filter by platform (adds a `categories:<name>` facet) |
 | `--version <semver>` | string | —       | Filter by MC version (adds a `versions:<ver>` facet)  |
-| `--beta`             | bool   | false   | No-op at search; honored at resolve time (§3.7)       |
-
-**`--beta` limitation.** Modrinth's `/v2/search` endpoint has no project-level pre-release facet — individual versions have a `version_type`, but the search API doesn't filter on it. `--beta` is accepted for consistency but is a **no-op at search time**; it's honored later when `install` / `info` resolves a specific version. Setting it in human mode logs a warning; in `--json` mode it is silent.
 
 Global command; not workspace-aware. Only searches Modrinth (Maven has no search API; local file lookups are not meaningful across a registry).
+
+**No `--beta` here.** Modrinth's `/v2/search` endpoint has no project-level pre-release facet, so search results never differ between stable and pre-release modes. Pre-release filtering happens later, at `install` / `info` time, when a specific version is resolved (§3.7).
 
 ### 2.8 `list` — installed deps and registries ⚠️
 

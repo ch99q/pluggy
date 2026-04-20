@@ -20,15 +20,11 @@ term.
 | `--page <n>`         | `0`     | Zero-indexed page offset.                        |
 | `--platform <id>`    | none    | Filter by platform tag (`paper`, `spigot`, ...). |
 | `--version <semver>` | none    | Filter by Minecraft version.                     |
-| `--beta`             | off     | Has no effect on search (surfaces a warning).    |
 
-`--beta` is accepted for CLI symmetry with `install`, but Modrinth's
-search endpoint has no project-level pre-release filter. When set without
-`--json`, pluggy logs a warning:
-
-```text
-⚠ --beta has no effect on search (no project-level pre-release filter); it's honored later at resolve time
-```
+There's no `--beta` flag here. Modrinth's `/v2/search` has no project-level
+pre-release filter, so search results never differ between stable and
+pre-release modes. Pre-release filtering happens later when [`install`](./install.md)
+or [`info`](./info.md) resolves a specific version.
 
 ## How it queries
 
