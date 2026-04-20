@@ -115,7 +115,7 @@ A pluggy project is defined by `project.json` at the project root. `pluggy` walk
 | `registries`    | `array`    | optional               | Additional Maven repositories. See §1.5.                                                                                                    |
 | `shading`       | `object`   | optional               | Per-dependency class include/exclude rules. See §1.6.                                                                                       |
 | `resources`     | `object`   | optional               | Files bundled into the jar. See §1.7.                                                                                                       |
-| `ide`           | `string`   | optional               | `"vscode" \| "eclipse" \| "intellij"`. 🎯                                                                                                   |
+| `ide`           | `string`   | optional               | `"vscode"` ✅ / `"eclipse"` ✅ / `"intellij"` 🎯. Build writes matching project files pointing at the resolved classpath.                   |
 | `workspaces`    | `string[]` | optional               | Paths to workspace sub-projects. See §1.8.                                                                                                  |
 | `dev`           | `object`   | optional               | Dev server settings for `pluggy dev`. See §1.9.                                                                                             |
 
