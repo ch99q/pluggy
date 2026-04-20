@@ -12,10 +12,6 @@ import {
   type WorkspaceContext,
 } from "../workspace.ts";
 
-/**
- * Options extracted from commander flags that `runBuildCommand` consumes.
- * Extracting the helper keeps tests off the commander surface.
- */
 export interface BuildCommandOptions {
   output?: string;
   clean?: boolean;
@@ -42,10 +38,12 @@ export interface BuildCommandResult {
 }
 
 /**
- * Core command runner. Exposed for tests so they don't have to parse argv.
+ * Run `pluggy build` against the resolved target set.
  *
- * Returns an aggregate result. Exit-code mapping is the caller's job; the
- * CLI wires `process.exit(result.exitCode)` at the end.
+ * Single-target failures rethrow so the CLI's top-level handler formats them;
+ * multi-workspace failures continue through remaining targets and are
+ * surfaced via `exitCode === 1`. JSON mode writes the success envelope to
+ * stdout and the partial-failure envelope to stderr (§3.1).
  */
 export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
@@ -54,7 +52,6 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
     throw new Error("No pluggy project found — run this from inside a project directory.");
   }
 
-  // Determine the list of workspaces to build.
   const targets = selectBuildTargets(context, opts);
 
   const results: BuildCommandResult["results"] = [];
@@ -99,12 +96,9 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
       if (!opts.json) {
         log.error(`${label}: ${message}`);
       }
-      // Single-project failure: rethrow so the CLI surfaces it cleanly.
       if (targets.length === 1) {
         throw err;
       }
-      // Multi-workspace: continue through the rest so the user sees
-      // which others succeeded.
     }
   }
 
@@ -125,7 +119,6 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
       })),
     };
     if (anyFailed) {
-      // Aggregate failure → stderr per §3.1.
       console.error(JSON.stringify(payload, null, 2));
     } else {
       console.log(JSON.stringify(payload, null, 2));
@@ -148,31 +141,25 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
 }
 
 /**
- * Resolve the list of workspaces/projects to build based on context + flags.
+ * Resolve which workspaces / projects a build call should cover, per §2.9.
  *
- * Rules (per spec §2.9):
- *  - At a root with workspaces, default to all in topological order.
- *    `--workspace <name>` narrows to one. `--workspaces` is an explicit opt-in.
- *  - Inside a workspace, build that workspace.
- *  - Standalone projects build themselves.
- *
- * Exported for testing.
+ * At a root with workspaces, defaults to every workspace in topological
+ * order; `--workspace` narrows to one. Inside a workspace, builds just that
+ * workspace. Standalone projects build themselves. Throws
+ * `InvalidArgumentError` on flag combinations the spec forbids.
  */
 export function selectBuildTargets(
   context: WorkspaceContext,
   opts: Pick<BuildCommandOptions, "workspace" | "workspaces">,
 ): ResolvedProject[] {
-  // At the root with declared workspaces.
   if (context.atRoot && context.workspaces.length > 0) {
     if (opts.workspace !== undefined) {
       const node = findWorkspace(context, opts.workspace);
       return [node.project];
     }
-    // Default: build all in topological order.
     return topologicalOrder(context.workspaces).map((n) => n.project);
   }
 
-  // Inside a workspace.
   if (context.current !== undefined) {
     if (opts.workspace !== undefined && opts.workspace !== context.current.name) {
       throw new InvalidArgumentError(
@@ -180,7 +167,6 @@ export function selectBuildTargets(
       );
     }
     if (opts.workspaces === true) {
-      // Spec treats --workspaces as meaningful only at the root. Refuse inside.
       throw new InvalidArgumentError(
         "--workspaces is only valid at the repo root; you're inside workspace " +
           `"${context.current.name}".`,
@@ -189,7 +175,6 @@ export function selectBuildTargets(
     return [context.current.project];
   }
 
-  // Standalone project.
   if (opts.workspace !== undefined) {
     throw new InvalidArgumentError(
       `--workspace "${opts.workspace}" given but this project declares no workspaces.`,
@@ -204,6 +189,7 @@ function formatBytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 }
 
+/** Factory for the `pluggy build` commander command. */
 export function buildCommand(): Command {
   return new Command("build")
     .alias("b")
@@ -224,7 +210,6 @@ export function buildCommand(): Command {
         json: globalOpts.json === true,
       });
       if (result.exitCode !== 0) {
-        // One or more workspace builds failed — signal a non-zero exit.
         process.exit(result.exitCode);
       }
     });

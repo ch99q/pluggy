@@ -1,3 +1,9 @@
+/**
+ * PaperMC fill.papermc.io client. Used by every PaperMC-family platform
+ * provider (paper, folia, travertine, velocity, waterfall) to list
+ * versions and download server jars.
+ */
+
 type Project = "paper" | "folia" | "travertine" | "velocity" | "waterfall";
 
 const PAPER_ENDPOINT = "https://fill.papermc.io/v3/projects";
@@ -21,12 +27,18 @@ interface Version {
   builds: number[];
 }
 
+/** List every version of a PaperMC project, newest-first. */
 export function versions(project: Project): Promise<Version[]> {
   return fetch(`${PAPER_ENDPOINT}/${project}/versions`)
     .then((res) => res.json() as Promise<{ versions: Version[] }>)
     .then((data) => data.versions);
 }
 
+/**
+ * Download a specific build (or the latest build when `build` is omitted)
+ * for `project`/`version` and return the bytes. `target` selects the
+ * download channel (defaults to `server:default`).
+ */
 export async function download(
   project: Project,
   version: string,

@@ -15,7 +15,7 @@ import { searchCommand } from "./commands/search.ts";
 import { upgradeCommand } from "./commands/upgrade.ts";
 import { bold, red } from "./logging.ts";
 
-// Ensure every platform provider self-registers.
+// Side-effect import: platform providers self-register via createPlatform.
 import "./platform/mod.ts";
 
 const CLI_VERSION = "0.0.0";

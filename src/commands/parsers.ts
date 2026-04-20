@@ -1,16 +1,18 @@
+/**
+ * commander argParser functions. Each validates, throws `InvalidArgumentError`
+ * on failure, and returns the parsed value — commander interpolates the
+ * return value into the parsed option.
+ */
+
 import { InvalidArgumentError } from "commander";
 
 import { getRegisteredPlatforms } from "../platform/mod.ts";
 import { parseIdentifier } from "../source.ts";
 
 /**
- * Commander argParser that validates a CLI plugin identifier — the full
- * grammar from §6.2 (`<slug>[@<version>]`, `<path>.jar`, `maven:g:a@v`,
- * `workspace:<name>`). Returns the input string untouched; downstream code
- * calls `parseIdentifier` again to get the tagged union.
- *
- * Commander wants a string back from argParsers (otherwise the typed value
- * replaces the raw input in help text, etc.), so we validate then pass through.
+ * Validate a plugin identifier (§6.2 grammar) and return the raw string.
+ * Downstream code calls `parseIdentifier` again for the tagged union; this
+ * parser exists so commander surfaces malformed identifiers at parse time.
  */
 export function parseIdentifierArg(value: string): string {
   try {

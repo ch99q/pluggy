@@ -1,9 +1,4 @@
-/**
- * Tests for src/commands/remove.ts.
- *
- * Real filesystem (project.json + pluggy.lock), no network, no resolver
- * interaction needed.
- */
+/** Tests for src/commands/remove.ts. Real filesystem, no network. */
 
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -120,15 +115,13 @@ describe("doRemove", () => {
     expect(result.lockEntryRemoved).toBe(true);
     expect(result.fileRemoved).toBe(false);
 
-    // The jar must still be on disk.
     const s = await stat(jarPath);
     expect(s.isFile()).toBe(true);
   });
 
   test("without --keep-file: never deletes the user's own source jar", async () => {
-    // Regression guard: the cache key is content-addressed under `<cache>/
-    // dependencies/file/<hex>.jar` — NOT the user's project-local file. Even
-    // without --keep-file, the file: source path on disk must survive.
+    // Regression guard: cache key is content-addressed under
+    // `<cache>/dependencies/file/<hex>.jar` — never the project-local path.
     const jarPath = join(dir, "libs", "custom.jar");
     await mkdir(join(dir, "libs"), { recursive: true });
     await writeFile(jarPath, "fake jar bytes");
@@ -156,9 +149,6 @@ describe("doRemove", () => {
 
     await doRemove({ cwd: dir, plugin: "custom" });
 
-    // The user's source jar must still exist. (The cache entry, if any, is
-    // content-addressed under ~/Library/Caches/pluggy/... — we don't touch
-    // the real cache in tests.)
     const s = await stat(jarPath);
     expect(s.isFile()).toBe(true);
   });

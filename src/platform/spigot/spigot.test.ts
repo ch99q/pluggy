@@ -4,8 +4,7 @@ import { expect, test } from "vite-plus/test";
 
 import { getPlatform } from "../mod.ts";
 
-// `spigot.download` runs BuildTools against a real Spigot checkout — slow and
-// Java-dependent. Gated behind PLUGGY_INTEGRATION=1.
+// spigot.download runs BuildTools — slow and Java-dependent. Gated behind PLUGGY_INTEGRATION=1.
 const integration = process.env.PLUGGY_INTEGRATION === "1";
 
 test("spigot platform exists", () => {

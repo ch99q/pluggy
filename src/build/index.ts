@@ -1,11 +1,7 @@
 /**
  * Build pipeline — compile → resources → descriptor → shade → jar.
- *
- * See docs/SPEC.md §2.9 for the full pipeline description.
- *
- * Workspace orchestration (topological multi-project builds) is not handled
- * here — the caller is responsible. `buildProject` handles exactly one
- * workspace at a time.
+ * See docs/SPEC.md §2.9. Workspace orchestration is the caller's job;
+ * `buildProject` handles exactly one workspace per call.
  */
 
 import { createHash } from "node:crypto";
@@ -45,22 +41,25 @@ export interface BuildResult {
 
 const STAGING_ROOT = ".pluggy-build";
 
+/**
+ * Drive the full build pipeline for one project. Returns the output jar
+ * path, its size, and wall-clock duration. Throws on any stage failure —
+ * partial output is left in the staging directory for inspection.
+ *
+ * The staging dir is keyed by a (name, version, rootDir) hash so repeat
+ * builds reuse the same path and `--clean` reliably nukes it.
+ */
 export async function buildProject(
   project: ResolvedProject,
   opts: BuildOptions,
 ): Promise<BuildResult> {
   const started = Date.now();
 
-  // 1. Resolve the descriptor — fail fast on cross-family.
   const descriptor = pickDescriptor(project);
 
-  // 2. Determine output path.
   const outputPath =
     opts.output ?? join(project.rootDir, "bin", `${project.name}-${project.version}.jar`);
 
-  // 3/4. Staging dir. Short-id derived from (name + version + rootDir) so repeat
-  // builds of the same workspace reuse the same path (and `--clean` reliably
-  // nukes it). Distinct workspaces never collide.
   const stagingId = createHash("sha256")
     .update(`${project.name}\0${project.version}\0${project.rootDir}`)
     .digest("hex")
@@ -72,41 +71,31 @@ export async function buildProject(
   }
   await mkdir(stagingDir, { recursive: true });
 
-  // 5. Resolve dependencies.
   const registries = collectRegistries(project);
   const resolvedDeps = await resolveDeclaredDependencies(project, registries);
-
-  // Platform API jars for the compiler classpath. primary version drives the
-  // Maven API coordinate lookup.
   const platformApiJars = await resolvePlatformApiJars(project, registries);
 
   const classpath = [...resolvedDeps.map((d) => d.jarPath), ...platformApiJars];
 
-  // 6. Stage resources (may include the user's own descriptor).
   await stageResources(project, stagingDir);
 
-  // 7. Auto-generate the primary descriptor, unless the user supplied it via
-  //    `resources` (in which case stageResources wrote it already).
+  // Auto-generate the descriptor unless the user staged one through `resources`.
   const descriptorRelPath = descriptor.path;
-  const userSuppliedDescriptor = hasUserDescriptor(project, descriptorRelPath);
-  if (!userSuppliedDescriptor) {
+  if (!hasUserDescriptor(project, descriptorRelPath)) {
     const rendered = descriptor.generate(project);
     const destination = join(stagingDir, descriptorRelPath);
     await mkdir(dirname(destination), { recursive: true });
     await writeFileLF(destination, rendered);
   }
 
-  // 8. Compile sources.
   await compileJava(project, {
     sourceDir: join(project.rootDir, "src"),
     outputDir: stagingDir,
     classpath,
   });
 
-  // 9. Shading — overlay matching classes from deps into staging.
   await applyShading(resolvedDeps, project.shading ?? {}, stagingDir);
 
-  // 10. Zip staging into the output jar.
   await mkdir(dirname(outputPath), { recursive: true });
   await zipDirectory(stagingDir, outputPath);
 
@@ -124,7 +113,6 @@ export async function buildProject(
 function hasUserDescriptor(project: ResolvedProject, descriptorPath: string): boolean {
   const resources = project.resources;
   if (resources === undefined || resources === null) return false;
-  // The user may declare the descriptor by its exact path key (e.g. "plugin.yml").
   return Object.prototype.hasOwnProperty.call(resources, descriptorPath);
 }
 
@@ -176,15 +164,15 @@ async function resolvePlatformApiJars(
   try {
     primary = getPlatform(primaryId);
   } catch {
-    // pickDescriptor already surfaced this; keep this branch quiet.
+    // pickDescriptor already surfaced this; stay quiet.
     return [];
   }
 
   const apiSpec = await primary.api(primaryVersion);
   if (apiSpec.dependencies.length === 0) return [];
 
-  // Prefer the platform's own repos; fall back to project registries so user
-  // overrides still work. Dedup while preserving order.
+  // Prefer the platform's own repos; project registries come after so user
+  // overrides still work. Order-preserving dedup.
   const registries = uniqueInOrder([...apiSpec.repositories, ...projectRegistries]);
 
   const jars: string[] = [];
@@ -218,7 +206,7 @@ async function zipDirectory(sourceDir: string, destPath: string): Promise<void> 
   return await new Promise<void>((resolvePromise, rejectPromise) => {
     const zip = new yazl.ZipFile();
 
-    // Pipe before queuing entries — yazl is a streaming writer.
+    // yazl is a streaming writer — pipe before queuing entries.
     const ws = createWriteStream(destPath);
     ws.once("error", rejectPromise);
     ws.once("close", () => resolvePromise());

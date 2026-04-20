@@ -1,6 +1,4 @@
-/**
- * Contract tests for src/build/descriptor.ts.
- */
+/** Tests for src/build/descriptor.ts. */
 
 import { describe, expect, test } from "vite-plus/test";
 
@@ -9,8 +7,8 @@ import type { ResolvedProject } from "../project.ts";
 
 import { pickDescriptor } from "./descriptor.ts";
 
-// Register a couple of synthetic platforms for cross-family tests. The
-// registry is module-level; ids only need to be unique.
+// Synthetic platforms for cross-family tests. The registry is module-level;
+// ids only need to be unique.
 createPlatform(() => ({
   id: "test-bukkit-a",
   descriptor: {
@@ -99,8 +97,6 @@ describe("pickDescriptor", () => {
   });
 
   test("picks the real registered 'paper' platform", () => {
-    // Smoke-test integration with the real registry — imports cascade from
-    // src/platform/mod.ts through the platform's per-provider files.
     const project = makeProject(["paper"]);
     const descriptor = pickDescriptor(project);
     expect(descriptor.path).toBe("plugin.yml");

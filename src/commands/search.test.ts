@@ -1,8 +1,4 @@
-/**
- * Tests for src/commands/search.ts (the `doSearch` helper).
- *
- * Network I/O is mocked via `vi.stubGlobal("fetch", ...)`.
- */
+/** Tests for src/commands/search.ts. `fetch` is stubbed. */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
@@ -31,9 +27,8 @@ afterEach(() => {
 describe("doSearch", () => {
   test("hits the Modrinth search endpoint with plugin facet and returns hits", async () => {
     let capturedUrl = "";
-    // Mock payload mirrors the real /v2/search response shape: `latest_version`
-    // is an opaque Modrinth version ID (not a semver), `project_type` is
-    // always "mod" even for plugins, and `versions` is the MC game-version list.
+    // Mirrors the real /v2/search shape — `latest_version` is opaque,
+    // `project_type` is always "mod", `versions` is the MC version list.
     const body = {
       hits: [
         {
@@ -73,7 +68,6 @@ describe("doSearch", () => {
     expect(result.page).toBe(0);
     expect(result.size).toBe(10);
 
-    // Facets always include project_type:plugin.
     expect(capturedUrl).toContain("facets=");
     const parsed = new URL(capturedUrl);
     const facets = JSON.parse(parsed.searchParams.get("facets") ?? "[]");
@@ -104,7 +98,7 @@ describe("doSearch", () => {
     const parsed = new URL(capturedUrl);
     const facets = JSON.parse(parsed.searchParams.get("facets") ?? "[]");
     expect(facets).toEqual([["project_type:plugin"], ["categories:paper"], ["versions:1.21.8"]]);
-    expect(parsed.searchParams.get("offset")).toBe("15"); // 5 * 3
+    expect(parsed.searchParams.get("offset")).toBe("15");
   });
 
   test("throws with a helpful message on API failure", async () => {

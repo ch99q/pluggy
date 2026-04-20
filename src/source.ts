@@ -1,14 +1,9 @@
 /**
- * Source-string parser.
- *
- * Converts the strings found in:
- *   - `project.json:dependencies[...].source` (the long-form grammar)
- *   - `pluggy install <identifier>` (the CLI identifier grammar)
- * into a tagged union consumed by the resolver.
- *
- * See docs/SPEC.md §6 for the full grammar.
+ * Source-string parser for `project.json` dependency sources and CLI
+ * install-identifier forms. Grammar: docs/SPEC.md §6.
  */
 
+/** Tagged union of every dependency source kind the resolver understands. */
 export type ResolvedSource =
   | { kind: "modrinth"; slug: string; version: string }
   | { kind: "maven"; groupId: string; artifactId: string; version: string }
@@ -20,14 +15,9 @@ const MAVEN_COORD_RE = /^[a-zA-Z][\w.-]*$/;
 const LATEST_STABLE = "*";
 
 /**
- * Parse a `project.json` source string + its declared version into a ResolvedSource.
- *
- * Accepts:
- *   - `"modrinth:<slug>"`
- *   - `"maven:<groupId>:<artifactId>"`
- *   - `"file:<path>"`
- *   - `"workspace:<name>"`
- *
+ * Parse the long-form source string that appears in `project.json`
+ * dependencies against its declared `version`. Accepts `modrinth:<slug>`,
+ * `maven:<groupId>:<artifactId>`, `file:<path>`, and `workspace:<name>`.
  * Throws on malformed input.
  */
 export function parseSource(source: string, version: string): ResolvedSource {
@@ -95,30 +85,20 @@ export function parseSource(source: string, version: string): ResolvedSource {
 }
 
 /**
- * Parse a CLI identifier (as passed to `pluggy install <x>`).
- *
- * Accepts:
- *   - `<slug>[@<version>]`                   (Modrinth)
- *   - `<path-to.jar>`                        (local file)
- *   - `maven:<groupId>:<artifactId>@<version>`
- *   - `workspace:<name>`
- *
- * If no version is specified for Modrinth/Maven, returns the latest-stable
- * sentinel (`"*"`); resolver is responsible for concretizing.
- *
- * Throws on malformed input.
+ * Parse a CLI install identifier. Accepts `<slug>[@<version>]` (Modrinth),
+ * `<path>.jar` (local file), `maven:<groupId>:<artifactId>@<version>`, and
+ * `workspace:<name>`. Absent Modrinth/Maven versions resolve to `"*"` (latest
+ * stable); the resolver concretizes. Throws on malformed input.
  */
 export function parseIdentifier(input: string): ResolvedSource {
   if (typeof input !== "string" || input.length === 0) {
     throw new Error(`Invalid identifier: "${input}" — expected a non-empty string`);
   }
 
-  // File form: anything ending in ".jar" (case-insensitive on the extension).
   if (/\.jar$/i.test(input)) {
     return { kind: "file", path: input, version: LATEST_STABLE };
   }
 
-  // maven:<groupId>:<artifactId>@<version>
   if (input.startsWith("maven:")) {
     const rest = input.slice("maven:".length);
     const atIndex = rest.lastIndexOf("@");
@@ -147,7 +127,6 @@ export function parseIdentifier(input: string): ResolvedSource {
     return { kind: "maven", groupId, artifactId, version };
   }
 
-  // workspace:<name>
   if (input.startsWith("workspace:")) {
     const name = input.slice("workspace:".length);
     if (name.length === 0) {
@@ -163,8 +142,7 @@ export function parseIdentifier(input: string): ResolvedSource {
     return { kind: "workspace", name, version: LATEST_STABLE };
   }
 
-  // Modrinth: <slug>[@<version>]
-  // Reject identifiers with more than one '@' to avoid ambiguity.
+  // Modrinth `<slug>[@<version>]`: reject multi-`@` to keep the grammar unambiguous.
   const atIndex = input.indexOf("@");
   if (atIndex !== -1 && input.indexOf("@", atIndex + 1) !== -1) {
     throw new Error(
@@ -190,8 +168,8 @@ export function parseIdentifier(input: string): ResolvedSource {
 }
 
 /**
- * Serialize a ResolvedSource back into the `project.json` source-string form.
- * The version component is NOT included (it lives in its own field).
+ * Serialize a `ResolvedSource` back into the `project.json` source-string
+ * form. The version component is excluded; it lives in its own field.
  */
 export function stringifySource(source: ResolvedSource): string {
   switch (source.kind) {

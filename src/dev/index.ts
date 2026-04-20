@@ -1,18 +1,6 @@
 /**
  * Dev-server runtime — stage `dev/`, build, spawn server, watch sources.
- *
- * See docs/SPEC.md §2.11 for the full flow.
- *
- * Flow:
- *   1. Pick primary platform + version (opt-overridable).
- *   2. Ensure the platform jar is in cache — `platform.download` writes to
- *      `<cachePath>/versions/<id>-<ver>-<build>.jar` and we re-use that path.
- *   3. Build the plugin (`buildProject`) — returns jar output path.
- *   4. Resolve declared deps, filter to runtime-plugins.
- *   5. Stage `dev/` (server jar, eula, server.properties).
- *   6. Populate `dev/plugins/` with own jar + runtime deps + extraPlugins.
- *   7. Spawn the server.
- *   8. On a debounced source change: rebuild → (reload | restart).
+ * Full flow in docs/SPEC.md §2.11.
  */
 
 import { basename, join, resolve } from "node:path";
@@ -45,11 +33,11 @@ export interface DevOptions {
 }
 
 /**
- * Run the dev loop against the given project. Returns when the server has
- * exited cleanly (e.g. user Ctrl+C → /stop → clean shutdown).
+ * Run the dev loop: ensure platform jar, build plugin, stage `dev/`, spawn
+ * server, and (unless `watch === false`) rebuild on source change. Returns
+ * when the server has exited cleanly.
  */
 export async function runDev(project: ResolvedProject, opts: DevOptions): Promise<void> {
-  // 1. Platform + version selection.
   const platformId = opts.platform ?? project.compatibility.platforms[0];
   if (platformId === undefined) {
     throw new Error(
@@ -65,9 +53,8 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
 
   const platform = getPlatform(platformId);
 
-  // 2. Ensure the platform jar is in cache. `platform.download` writes to
-  //    `<cachePath>/versions/<id>-<ver>-<build>.jar` and returns `Version & { output }`.
-  //    We discard the bytes and use the on-disk path.
+  // `platform.download` writes to `<cachePath>/versions/<id>-<ver>-<build>.jar`;
+  // we reuse that on-disk path instead of the returned bytes.
   const versionInfo = await platform.getVersionInfo(mcVersion);
   const downloaded = await platform.download(versionInfo, false);
   const platformJarPath = join(
@@ -76,13 +63,10 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
     `${platform.id}-${downloaded.version}-${downloaded.build}.jar`,
   );
 
-  // 3. Build the plugin.
   let buildResult = await buildProject(project, { clean: opts.clean });
 
-  // 4. Resolve declared runtime-plugin dependencies.
   const runtimePluginDeps = await resolveRuntimePluginDeps(project, platform.descriptor);
 
-  // 5. Stage dev/.
   const devDir = await stageDev(project, platformJarPath, {
     clean: opts.clean,
     freshWorld: opts.freshWorld,
@@ -90,13 +74,11 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
     onlineMode: opts.offline === true ? false : project.dev?.onlineMode,
   });
 
-  // 6. Populate dev/plugins/.
   const extraPluginsAbsolute = (project.dev?.extraPlugins ?? []).map((p) =>
     resolve(project.rootDir, p),
   );
   await stagePlugins(devDir, buildResult.outputPath, runtimePluginDeps, extraPluginsAbsolute);
 
-  // 7. Spawn the server.
   const memory = opts.memory ?? project.dev?.memory ?? "2G";
   const jvmArgs = opts.args ?? project.dev?.jvmArgs ?? [];
   let child = spawnServer({
@@ -108,7 +90,6 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
 
   log.debug(`dev: server spawned (pid=${child.pid ?? "?"})`);
 
-  // 8. Watch + rebuild/reload, unless explicitly disabled.
   const pluginJarName = basename(buildResult.outputPath);
   const pluginDest = join(devDir, "plugins", pluginJarName);
 
@@ -131,9 +112,8 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
       }
 
       if (opts.reload === true) {
-        // Reload: overwrite the jar on disk, then ask the server to /reload.
-        // /reload has well-known correctness problems for stateful plugins —
-        // the spec warns users. Best-effort replacement.
+        // /reload has known correctness problems for stateful plugins; the
+        // spec warns users. Best-effort swap + reload.
         try {
           await linkOrCopy(buildResult.outputPath, pluginDest);
           if (child.stdin !== null && !child.stdin.destroyed && child.stdin.writable) {
@@ -146,7 +126,6 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
         return;
       }
 
-      // Default: stop current child, replace jar, spawn a new server.
       if (child.stdin !== null && !child.stdin.destroyed && child.stdin.writable) {
         child.stdin.write("stop\n");
       }
@@ -175,8 +154,7 @@ export async function runDev(project: ResolvedProject, opts: DevOptions): Promis
   }
 
   try {
-    // Await until the current child exits. If a rebuild respawned the child,
-    // `child` was reassigned — so we snapshot, wait, and re-check each round.
+    // `child` is reassigned when a rebuild respawns; snapshot, wait, re-check.
     while (true) {
       const snapshot = child;
       await waitForExit(snapshot);

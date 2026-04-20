@@ -1,10 +1,6 @@
 /**
- * Contract tests for src/commands/build.ts.
- *
- * Uses a real on-disk `project.json` layout + the actual workspace resolver,
- * but mocks `buildProject` so we never compile Java or write a jar. This
- * exercises target selection, ordering, continue-on-failure, and JSON output
- * without real builds.
+ * Tests for src/commands/build.ts. Real workspace resolver + on-disk
+ * `project.json`; `buildProject` is mocked so no Java compiles.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -119,7 +115,6 @@ describe("runBuildCommand", () => {
 
     const calls = vi.mocked(buildProject).mock.calls;
     expect(calls).toHaveLength(2);
-    // topologicalOrder should put suite_api first (dep of suite_impl).
     expect(calls[0][0].name).toBe("suite_api");
     expect(calls[1][0].name).toBe("suite_impl");
   });
@@ -138,7 +133,6 @@ describe("runBuildCommand", () => {
     expect(res.results[0].ok).toBe(false);
     expect(res.results[0].error).toContain("boom on api");
     expect(res.results[1].ok).toBe(true);
-    // buildProject called twice despite the first failing.
     expect(buildProject).toHaveBeenCalledTimes(2);
   });
 
@@ -175,7 +169,6 @@ describe("runBuildCommand", () => {
     expect(parsed.results).toHaveLength(1);
     expect(parsed.results[0].ok).toBe(true);
     expect(parsed.results[0].outputPath).toBe("/tmp/out.jar");
-    // No human text mixed into stdout.
     expect(stderrSpy).not.toHaveBeenCalled();
   });
 

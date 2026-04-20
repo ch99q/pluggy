@@ -1,9 +1,4 @@
-/**
- * Contract tests for src/build/compile.ts.
- *
- * Uses vi.mock("node:child_process") to stub spawn — tests never actually
- * run javac, so they're hermetic and CI-safe even without a JDK.
- */
+/** Tests for src/build/compile.ts. `spawn` is stubbed — no real javac. */
 
 import { EventEmitter } from "node:events";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -53,7 +48,7 @@ function fakeChild(): FakeChildHandle {
   return {
     child: ee,
     emitExit(code) {
-      // yield to let data chunks flush first
+      // Yield so queued data chunks flush before the close event.
       setImmediate(() => ee.emit("close", code));
     },
     emitStderr(text) {
@@ -112,7 +107,6 @@ describe("compileJava", () => {
     );
     expect(argList).toContain(join(srcDir, "com", "example", "Main.java"));
     expect(argList).toContain(join(srcDir, "com", "example", "Other.java"));
-    // .txt files must NOT be included.
     expect(argList.some((a: string) => a.endsWith("notes.txt"))).toBe(false);
   });
 
@@ -188,7 +182,6 @@ describe("compileJava", () => {
       message = (err as Error).message;
     }
     expect(message).toContain("javac-error-line-60");
-    // The first line should have been dropped from the window.
     expect(message).not.toContain("javac-error-line-1\n");
     expect(message).not.toMatch(/javac-error-line-1$/);
   });
@@ -196,7 +189,6 @@ describe("compileJava", () => {
   test("errors when no .java sources are found", async () => {
     const srcDir = join(workDir, "src");
     await mkdir(srcDir, { recursive: true });
-    // No .java files.
 
     const project = makeProject(workDir);
     await expect(

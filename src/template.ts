@@ -1,3 +1,13 @@
+/**
+ * `${project.x}` substitution used by `init` and the build pipeline to seed
+ * template files with values from `project.json`.
+ */
+
+/**
+ * Flatten a nested object into a dotted-path map of scalar strings:
+ * `{ a: { b: 1 } }` yields `{ "a.b": "1" }`. Arrays yield numeric-suffixed
+ * keys (`list.0`, `list.1`, ...).
+ */
 export function generateReplacementMap(
   obj: Record<string, unknown>,
   prefix = "",
@@ -22,6 +32,7 @@ export function generateReplacementMap(
   return map;
 }
 
+/** Substitute every `${dotted.key}` in `template` from `obj`. */
 export function replace(template: string, obj: Record<string, unknown>): string {
   const replacementMap = generateReplacementMap(obj);
   let result = template;

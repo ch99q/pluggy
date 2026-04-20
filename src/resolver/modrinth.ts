@@ -1,11 +1,7 @@
 /**
- * Modrinth resolver.
- *
- * Resolves `modrinth:<slug>` sources against https://api.modrinth.com/v2.
- * Fetches the version list, picks a concrete version (respecting
- * `includePrerelease`), and downloads the primary jar into the user cache.
- *
- * See docs/SPEC.md §2.4 and §3.7.
+ * Modrinth resolver. Fetches the version list for a slug, picks a concrete
+ * version (honouring `includePrerelease`), and downloads the primary jar
+ * into the user cache. See docs/SPEC.md §2.4 and §3.7.
  */
 
 import { createHash } from "node:crypto";
@@ -37,6 +33,10 @@ interface ModrinthVersion {
   files: ModrinthFile[];
 }
 
+/**
+ * Resolve `modrinth:<slug>@<version>` into a cached jar. `version === "*"`
+ * picks the newest (stable unless `ctx.includePrerelease`).
+ */
 export async function resolveModrinth(
   slug: string,
   version: string,
@@ -105,7 +105,7 @@ function pickVersion(
           (includePrerelease ? "" : " (pass --beta to include pre-releases)"),
       );
     }
-    // Modrinth returns versions newest-first; take the first eligible.
+    // Modrinth orders versions newest-first; no re-sort needed.
     return eligible[0];
   }
 

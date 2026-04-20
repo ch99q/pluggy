@@ -1,11 +1,7 @@
 /**
- * Contract tests for the Bukkit-family descriptor generator.
- *
- * The emitted `plugin.yml` must be parseable by the Bukkit family server
- * (paper/spigot/bukkit/folia). We don't pull in a YAML dep — instead we assert
- * on substrings for the happy path and parse manually (a small line-splitter)
- * for shape checks, plus use `JSON.parse` on double-quoted scalars to verify
- * escape correctness.
+ * Contract tests for the Bukkit-family descriptor generator. No YAML dep:
+ * a small line-splitter parses the output and JSON.parse decodes
+ * double-quoted scalars for escape correctness.
  */
 
 import { describe, expect, test } from "vite-plus/test";
@@ -27,10 +23,9 @@ function project(overrides: Partial<ResolvedProject> = {}): ResolvedProject {
 }
 
 /**
- * Parses a flat YAML descriptor with scalar and sequence values into a plain
- * object. Only handles the subset our generator produces: `key: scalar`,
- * `key:` followed by `  - item` lines. Double-quoted scalars are decoded via
- * JSON.parse so escape handling round-trips.
+ * Parse the subset of YAML the Bukkit generator emits: `key: scalar` and
+ * `key:` followed by `  - item` lines. Double-quoted scalars are decoded
+ * via JSON.parse.
  */
 function parseDescriptor(yaml: string): Record<string, string | string[]> {
   const result: Record<string, string | string[]> = {};
@@ -46,7 +41,6 @@ function parseDescriptor(yaml: string): Record<string, string | string[]> {
     const key = line.slice(0, colonIdx);
     const rest = line.slice(colonIdx + 1).trimStart();
     if (rest.length === 0) {
-      // Block list follows.
       const items: string[] = [];
       i++;
       while (i < lines.length && lines[i].startsWith("  - ")) {
@@ -145,7 +139,6 @@ describe("bukkitDescriptor.generate", () => {
   });
 
   test("quotes reserved words (true / null / numeric-looking)", () => {
-    // Author "true" without quoting would parse as a boolean.
     const output = bukkitDescriptor.generate(project({ authors: ["true", "null", "1.0"] }));
     expect(output).toContain('- "true"');
     expect(output).toContain('- "null"');

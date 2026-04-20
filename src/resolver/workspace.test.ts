@@ -1,6 +1,4 @@
-/**
- * Contract tests for src/resolver/workspace.ts.
- */
+/** Contract tests for src/resolver/workspace.ts. */
 
 import { join } from "node:path";
 

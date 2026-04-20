@@ -1,10 +1,6 @@
 /**
- * Contract tests for src/resolver/modrinth.ts.
- *
- * All network I/O is mocked via `vi.stubGlobal("fetch", ...)` so the suite
- * runs fully offline.
- *
- * See docs/SPEC.md §2.4 and §3.7.
+ * Contract tests for src/resolver/modrinth.ts. Network I/O is mocked via
+ * `vi.stubGlobal("fetch", ...)` so the suite runs offline.
  */
 
 import { createHash } from "node:crypto";
@@ -70,8 +66,7 @@ const ctx: ResolveContext = {
 };
 
 describe("resolveModrinth", () => {
-  // Redirect the user cache to a temp directory so the tests don't touch the
-  // real host cache.
+  // Redirect the user cache into a tempdir so tests don't pollute the host.
   let cacheRoot: string;
   let origHome: string | undefined;
   let origXdg: string | undefined;
@@ -120,7 +115,6 @@ describe("resolveModrinth", () => {
     expect(got.transitiveDeps).toEqual([]);
     const expectedHex = createHash("sha256").update(bytes).digest("hex");
     expect(got.integrity).toBe(`sha256-${expectedHex}`);
-    // Verify the cached file on disk matches.
     const written = await readFile(got.jarPath);
     expect(new Uint8Array(written)).toEqual(bytes);
   });
@@ -214,7 +208,6 @@ describe("resolveModrinth", () => {
     const bytes = new Uint8Array([1, 2, 3, 4]);
     const versions: ModrinthVersion[] = [mkVersion("1.0.0", "release", "https://cdn/1.0.0.jar")];
 
-    // First pass: populate the cache.
     const firstFetch = vi.fn(async (url: string | URL): Promise<Response> => {
       const s = String(url);
       if (s.includes("/project/")) return okJson(versions);
@@ -225,7 +218,7 @@ describe("resolveModrinth", () => {
     await resolveModrinth("slugA", "*", ctx);
     expect(firstFetch).toHaveBeenCalledTimes(2);
 
-    // Second pass: should only hit the version API, not the jar URL.
+    // Second pass should only hit the version API, never the jar URL.
     const secondFetch = vi.fn(async (url: string | URL): Promise<Response> => {
       const s = String(url);
       if (s.includes("/project/")) return okJson(versions);

@@ -1,11 +1,8 @@
 /**
- * Maven resolver.
- *
- * Walks `ctx.registries` in order, tries to fetch the standard Maven path
- * `<registry>/<group/with/slashes>/<artifact>/<version>/<artifact>-<version>.jar`.
- * First 200 wins. If none respond 200, throws with the full registry list tried.
- *
- * See docs/SPEC.md §2.4 and §1.5.
+ * Maven resolver. Walks `ctx.registries` in order against the standard
+ * `<registry>/<group/with/slashes>/<artifact>/<version>/<artifact>-<version>.jar`
+ * path; first 200 wins. Throws with the full failure list when every
+ * registry fails. See docs/SPEC.md §2.4 and §1.5.
  */
 
 import { createHash } from "node:crypto";
@@ -17,6 +14,10 @@ import type { ResolvedSource } from "../source.ts";
 
 import type { ResolveContext, ResolvedDependency } from "./index.ts";
 
+/**
+ * Resolve a Maven coordinate into a cached jar. Requires at least one entry
+ * in `ctx.registries`; throws otherwise.
+ */
 export async function resolveMaven(
   groupId: string,
   artifactId: string,

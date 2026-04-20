@@ -1,12 +1,4 @@
-/**
- * Contract tests for src/commands/dev.ts.
- *
- * Mocks `runDev` so no real server is spawned. Exercises:
- *   - Target resolution rules (standalone, in-workspace, at root).
- *   - `--workspace` required at root with workspaces; unknown name errors.
- *   - `--no-watch` (commander's `opts.watch === false`) flows through verbatim.
- *   - JSON mode emits a single startup line on stdout.
- */
+/** Tests for src/commands/dev.ts. `runDev` is mocked — no real server spawned. */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -125,7 +117,6 @@ describe("runDevCommand", () => {
     await writeStandalone();
     await runDevCommand({ cwd: rootDir, json: true });
 
-    // One JSON startup line on stdout (log.info paths were skipped in JSON mode).
     const jsonCalls = stdoutSpy.mock.calls.filter((c: unknown[]) => {
       try {
         return typeof c[0] === "string" && JSON.parse(c[0] as string).status === "starting";

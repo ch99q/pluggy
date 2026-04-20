@@ -18,10 +18,7 @@ export interface DevCommandOptions {
   memory?: string;
   clean?: boolean;
   freshWorld?: boolean;
-  /**
-   * Commander's `--no-watch` flag produces `watch === false` here; the
-   * absence of the flag defaults to `true`.
-   */
+  /** `--no-watch` → `false`; flag absence → `undefined` (treated as on). */
   watch?: boolean;
   reload?: boolean;
   offline?: boolean;
@@ -30,16 +27,11 @@ export interface DevCommandOptions {
 }
 
 /**
- * Core command runner. Exposed for tests so they don't have to parse argv.
+ * Resolve the dev target, emit a startup envelope, and delegate to `runDev`.
  *
- * Resolves workspace context, picks the target workspace, emits the JSON
- * startup line if asked, and delegates to `runDev`. Errors from `runDev`
- * are allowed to propagate — the CLI's top-level handler formats them.
- *
- * `dev` is inherently interactive: the dev server's own stdout/stderr stream
- * to the user's terminal. With `--json`, we emit one startup JSON line and
- * then let the server logs through unchanged (stderr). This matches the
- * "one structured envelope, then raw output" pattern from §3.1.
+ * In `--json` mode this writes one `{status: "starting", …}` line to stdout
+ * and then lets the server's stdout/stderr through unchanged (§3.1's "one
+ * envelope, then raw output" pattern). Errors from `runDev` propagate.
  */
 export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
@@ -67,9 +59,6 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
     log.info(`dev: starting ${target.name}`);
   }
 
-  // Forward JVM args from `dev.jvmArgs` in project.json (there is no CLI flag
-  // in the declared surface; `--args` is documented but not wired as a
-  // commander option per the task's flag list).
   await runDev(target, {
     platform: opts.platform,
     version: opts.version,
@@ -85,15 +74,11 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
 }
 
 /**
- * Resolve the one target workspace based on context + flags.
+ * Pick the single workspace `dev` targets, per §2.11.
  *
- * Rules (per spec §2.11):
- *  - At a root with workspaces → `--workspace <name>` is required.
- *  - Inside a workspace → that workspace.
- *  - Standalone → the project itself.
- *  - `--workspaces` is not a flag on this command; `dev` is always one.
- *
- * Exported for testing.
+ * At a root with workspaces `--workspace` is required; inside a workspace it
+ * must match (or be omitted); standalone projects use their root. `dev` has
+ * no `--workspaces` — the dev server is always one-at-a-time.
  */
 export function selectDevTarget(
   context: WorkspaceContext,
@@ -118,7 +103,6 @@ export function selectDevTarget(
     return context.current.project;
   }
 
-  // Standalone.
   if (opts.workspace !== undefined) {
     throw new InvalidArgumentError(
       `--workspace "${opts.workspace}" given but this project declares no workspaces.`,
@@ -127,6 +111,7 @@ export function selectDevTarget(
   return context.root;
 }
 
+/** Factory for the `pluggy dev` commander command. */
 export function devCommand(): Command {
   return new Command("dev")
     .description("Start a development server for the project.")
@@ -150,10 +135,7 @@ export function devCommand(): Command {
         memory: options.memory,
         clean: options.clean === true,
         freshWorld: options.freshWorld === true,
-        // commander: `--no-watch` → opts.watch === false; absence → undefined
-        // (commander's default for negated bool flags is `true` when registered
-        // via `.option("--no-watch", ...)`). Pass through verbatim so `runDev`
-        // sees `watch !== false` means "watch".
+        // commander's `--no-watch` yields watch:false; absence yields true.
         watch: options.watch,
         reload: options.reload === true,
         offline: options.offline === true,

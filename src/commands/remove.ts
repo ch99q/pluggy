@@ -31,6 +31,14 @@ export interface RemoveResult {
   fileRemoved: boolean;
 }
 
+/**
+ * Run `pluggy remove <plugin>`. Strips the dep from every targeted
+ * `project.json`, drops the lockfile entry when no workspace still declares
+ * it, and (unless `keepFile`) best-effort-unlinks the cached jar.
+ *
+ * Never touches the user's own source jar — only the content-addressed copy
+ * under `<cache>/dependencies/`.
+ */
 export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
   if (typeof opts.plugin !== "string" || opts.plugin.length === 0) {
     throw new Error("remove: plugin name is required");
@@ -49,7 +57,6 @@ export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
 
   for (const target of scope.targets) {
     const present = await removeFromProject(target, opts.plugin, {
-      // When we span all workspaces, missing deps are informational, not errors.
       errorIfMissing: !scope.spansAllWorkspaces,
     });
     if (present) {
@@ -59,14 +66,10 @@ export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
     }
   }
 
-  // Lockfile: drop the entry if no workspace still declares it.
   let lockEntryRemoved = false;
   const rootDir = scope.context.root.rootDir;
   const lock: Lockfile | null = readLock(rootDir);
   if (lock !== null && lock.entries[opts.plugin] !== undefined) {
-    // A dep is "still declared" when an untouched workspace (or the root, if
-    // standalone) still has it in its `dependencies` map. `removed` names the
-    // targets we just edited — everything outside that list is untouched.
     const touched = new Set(removed);
     const stillDeclaredSomewhere = declaresDepOutside(scope.context, opts.plugin, touched);
     if (!stillDeclaredSomewhere) {
@@ -75,7 +78,6 @@ export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
       await writeLock(rootDir, { version: 1, entries: nextEntries });
       lockEntryRemoved = true;
     } else {
-      // Trim declaredBy to match the new reality so the lockfile stays honest.
       const entry = lock.entries[opts.plugin];
       const nextDeclaredBy = entry.declaredBy.filter((w) => !touched.has(w));
       if (nextDeclaredBy.length !== entry.declaredBy.length) {
@@ -88,12 +90,8 @@ export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
     }
   }
 
-  // Best-effort cached jar deletion. Failures are logged, not fatal —
-  // the dep is already out of project.json and pluggy.lock at this point.
-  //
-  // We drop the *cached* copy (under `<cache>/dependencies/`), never the
-  // user's own source file. The cached copy is content-addressed by the
-  // integrity hash.
+  // §2.5: cached-jar deletion is best-effort and operates on the cache copy
+  // only — the user's source jar is never touched.
   let fileRemoved = false;
   if (opts.keepFile !== true && lockEntryRemoved) {
     const priorEntry = lock?.entries[opts.plugin];
@@ -106,7 +104,6 @@ export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
         } catch (err) {
           const code = (err as NodeJS.ErrnoException).code;
           if (code !== "ENOENT") {
-            // Warn but don't fail — §2.5 is explicit that this is best-effort.
             console.warn(`remove: could not delete ${cachePath}: ${(err as Error).message}`);
           }
         }
@@ -120,9 +117,9 @@ export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
 }
 
 /**
- * Remove the named dep from a single project's `project.json`. Returns true
- * if the dep was present (and removed); false if absent. When `errorIfMissing`
- * is set, an absent dep throws instead.
+ * Remove the named dep from one project's `project.json`. Returns true if the
+ * dep was present (and removed); false if absent. With `errorIfMissing`, an
+ * absent dep throws instead.
  */
 async function removeFromProject(
   target: ScopeTarget,
@@ -155,10 +152,8 @@ async function removeFromProject(
 }
 
 /**
- * Is `name` still declared by any project we did NOT just touch?
- *
- * `scope.context` reflects the pre-write state, so we answer by walking every
- * workspace (or the root, for standalones) and skipping anything in `touched`.
+ * Is `name` still declared by any project we didn't just touch?
+ * `scope.context` is the pre-write snapshot — walk it and skip `touched`.
  */
 function declaresDepOutside(
   context: {
@@ -181,9 +176,8 @@ function declaresDepOutside(
 
 /**
  * Locate the cached jar for a lockfile entry. Cache layout mirrors each
- * resolver (`<cache>/dependencies/<kind>/…`) — see `src/resolver/*.ts`.
- * `workspace:` deps aren't cached (they're built locally), so they return
- * undefined and skip jar-deletion.
+ * resolver (`<cache>/dependencies/<kind>/…`). `workspace:` deps aren't cached
+ * (they're built locally), so they return undefined.
  */
 function cachedJarPathFor(entry: LockfileEntry): string | undefined {
   const base = join(getCachePath(), "dependencies");
@@ -194,8 +188,8 @@ function cachedJarPathFor(entry: LockfileEntry): string | undefined {
     case "maven":
       return join(base, "maven", src.groupId, src.artifactId, `${entry.resolvedVersion}.jar`);
     case "file": {
-      // file-kind resolver names the cached copy by the bytes' sha256 hex.
-      // The lockfile integrity is `"sha256-<hex>"` — strip the prefix.
+      // file-resolver cache key is `sha256-<hex>.jar`; lockfile integrity is
+      // `sha256-<hex>` — strip the prefix.
       const hex = entry.integrity.startsWith("sha256-")
         ? entry.integrity.slice("sha256-".length)
         : entry.integrity;
@@ -233,6 +227,7 @@ function emitRemoveResult(opts: RemoveOptions, result: RemoveResult): void {
   );
 }
 
+/** Factory for the `pluggy remove` commander command. */
 export function removeCommand(): Command {
   return new Command("remove")
     .alias("rm")

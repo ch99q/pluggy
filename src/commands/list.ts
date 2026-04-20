@@ -45,8 +45,12 @@ export interface ListResult {
 }
 
 /**
- * Perform the `list` action. Exposed as a helper so tests can drive it
- * without going through commander.
+ * Enumerate declared dependencies and registries for the current scope.
+ *
+ * Aggregates per-workspace declarations by dep name (merging `declaredBy`
+ * lists), overlays resolved versions from `pluggy.lock`, and elides registry
+ * credentials. Credentials must never appear in the result — it feeds `--json`
+ * output and terminal logs.
  */
 export async function doList(options: ListOptions): Promise<ListResult> {
   const cwd = options.cwd ?? process.cwd();
@@ -59,8 +63,6 @@ export async function doList(options: ListOptions): Promise<ListResult> {
   const targets = selectTargets(ctx, options, scope);
   const lock = readLock(ctx.root.rootDir);
 
-  // Aggregate declarations keyed by dep name. A workspace and its siblings
-  // may declare the same dep; we merge their `declaredBy` entries.
   const agg = new Map<string, DepEntry>();
   for (const { declaringName, project } of targets) {
     const deps = project.dependencies ?? {};
@@ -90,11 +92,7 @@ export async function doList(options: ListOptions): Promise<ListResult> {
     }
   }
 
-  // Stable alphabetical ordering so tests and diffs are deterministic.
   const deps = Array.from(agg.values()).sort((a, b) => a.name.localeCompare(b.name));
-
-  // Registries come from the root (merged) config. Credentials are elided to
-  // avoid leaking secrets through `--json` output or logs.
   const registries = collectRegistries(ctx);
 
   const target =
@@ -106,22 +104,16 @@ export async function doList(options: ListOptions): Promise<ListResult> {
 
   const result: ListResult = { scope, deps, registries, target };
 
-  if (options.outdated) {
-    if (options.json) {
-      // No mutation; just noted in the JSON payload (future: per-entry newer).
-    } else {
-      log.info(
-        dim("(--outdated not yet implemented; will require a Modrinth version-query per dep)"),
-      );
-    }
+  if (options.outdated && !options.json) {
+    log.info(
+      dim("(--outdated not yet implemented; will require a Modrinth version-query per dep)"),
+    );
   }
 
-  if (options.tree) {
-    if (!options.json) {
-      log.info(
-        dim("(--tree not yet implemented; transitive deps aren't tracked — printing flat list)"),
-      );
-    }
+  if (options.tree && !options.json) {
+    log.info(
+      dim("(--tree not yet implemented; transitive deps aren't tracked — printing flat list)"),
+    );
   }
 
   if (options.json) {
@@ -133,10 +125,6 @@ export async function doList(options: ListOptions): Promise<ListResult> {
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// Scope / targets
-// ---------------------------------------------------------------------------
-
 function determineScope(
   ctx: WorkspaceContext,
   options: ListOptions,
@@ -144,9 +132,7 @@ function determineScope(
   if (ctx.workspaces.length === 0) return "standalone";
   if (options.workspace !== undefined) return "workspace";
   if (options.workspaces) return "root";
-  // At root with workspaces and no flag → aggregated.
   if (ctx.atRoot) return "root";
-  // Inside a workspace → current only, unless --workspaces given.
   return "workspace";
 }
 
@@ -171,34 +157,22 @@ function selectTargets(
     if (ctx.current) {
       return [{ declaringName: ctx.current.name, project: ctx.current.project }];
     }
-    // Fall through — no current workspace; treat as root.
   }
-  // Root: every workspace.
   return ctx.workspaces.map((w: WorkspaceNode) => ({
     declaringName: w.name,
     project: w.project,
   }));
 }
 
-// ---------------------------------------------------------------------------
-// Dependency value normalization
-// ---------------------------------------------------------------------------
-
 function normalizeDependencySource(name: string, raw: string | Dependency): ResolvedSource {
-  // Short-form string is a Modrinth pin. The dep name doubles as the slug.
+  // Short-form `"foo": "1.2.3"` is sugar for `modrinth:<name>` — §1.4.
   if (typeof raw === "string") {
     return { kind: "modrinth", slug: name, version: raw };
   }
   return parseSource(raw.source, raw.version);
 }
 
-// ---------------------------------------------------------------------------
-// Registries
-// ---------------------------------------------------------------------------
-
 function collectRegistries(ctx: WorkspaceContext): RegistryEntry[] {
-  // Resolve from current scope's merged config if inside a workspace (so a
-  // workspace can see its inherited+own registries), else from root.
   const project = ctx.current?.project ?? ctx.root;
   const raw = project.registries ?? [];
   const out: RegistryEntry[] = [];
@@ -216,10 +190,6 @@ function normalizeRegistry(entry: string | Registry): RegistryEntry {
   if (typeof entry === "string") return { url: entry, authenticated: false };
   return { url: entry.url, authenticated: entry.credentials !== undefined };
 }
-
-// ---------------------------------------------------------------------------
-// Human output
-// ---------------------------------------------------------------------------
 
 function printHumanList(result: ListResult): void {
   log.info(bold(`${result.scope}: ${result.target}`));
@@ -261,6 +231,7 @@ function describeSource(source: ResolvedSource): string {
   }
 }
 
+/** Factory for the `pluggy list` commander command. */
 export function listCommand(): Command {
   return new Command("list")
     .alias("ls")

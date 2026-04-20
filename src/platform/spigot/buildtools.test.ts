@@ -11,10 +11,8 @@ import type { PlatformContext } from "../platform.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
-// The compile test actually runs `java -jar BuildTools.jar` against a live
-// Spigot checkout; it takes minutes and needs Java 8-21 on PATH. Gated behind
-// PLUGGY_INTEGRATION=1 so the default `vp test` run stays under a couple of
-// minutes.
+// Compile runs java against a live Spigot checkout — needs Java 8-21, takes
+// minutes. Gated behind PLUGGY_INTEGRATION=1.
 const integration = process.env.PLUGGY_INTEGRATION === "1";
 
 test("BuildTools download", async () => {

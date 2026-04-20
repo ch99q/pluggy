@@ -1,3 +1,9 @@
+/**
+ * Spigot BuildTools driver. Downloads `BuildTools.jar`, spawns it under
+ * Java to compile a CraftBukkit or Spigot server jar, and surfaces the
+ * child's live output as an async stream.
+ */
+
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { mkdir, rm, stat, writeFile } from "node:fs/promises";
@@ -9,6 +15,7 @@ const BUILDTOOLS_URL =
   "https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar";
 export const VERSIONS_URL = "https://hub.spigotmc.org/versions/";
 
+/** Download (or reuse a cached copy of) `BuildTools.jar` and return its path. */
 export async function download(ctx: PlatformContext, ignoreCache = false): Promise<string> {
   const BUILDTOOLS_PATH = join(ctx.getCachePath(), "BuildTools.jar");
   if (existsSync(BUILDTOOLS_PATH) && !ignoreCache) {
@@ -23,13 +30,22 @@ export async function download(ctx: PlatformContext, ignoreCache = false): Promi
 
 export type PlatformType = "craftbukkit" | "spigot" | "none";
 
+/** Live handle for a running BuildTools compile. */
 export type Compiler = {
   type: PlatformType;
   version: string;
+  /** Async iterator of combined stdout+stderr lines from the child. */
   stream: AsyncGenerator<string>;
+  /** Await the child's exit and return the final jar bytes. */
   output(): Promise<Uint8Array>;
 };
 
+/**
+ * Spawn BuildTools to compile `type` at `version`. Returns immediately with
+ * a handle; the caller iterates `stream` to tap output and awaits `output()`
+ * to get the final jar bytes (which throws with the last stderr line if the
+ * child exits non-zero or the expected jar is missing).
+ */
 export async function compile(
   ctx: PlatformContext,
   version: string,
@@ -103,7 +119,7 @@ export async function compile(
     version,
     async output() {
       for await (const _ of stream) {
-        // drain
+        // Drain so the child is allowed to exit.
       }
       const code = await exited;
       const ok = await stat(OUTPUT_JAR)
@@ -120,6 +136,10 @@ export async function compile(
   };
 }
 
+/**
+ * Scrape Spigot's version index and return versions ordered newest-first.
+ * Results include `.json`-suffixed entries after stripping the extension.
+ */
 export async function versions(): Promise<string[]> {
   const res = await fetch(VERSIONS_URL);
   if (!res.ok) throw new Error(`Failed to fetch buildtools versions: ${res.statusText}`);

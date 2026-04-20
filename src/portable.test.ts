@@ -1,7 +1,5 @@
 /**
- * Contract tests for src/portable.ts.
- *
- * See docs/SPEC.md §3.8.
+ * Contract tests for src/portable.ts. See docs/SPEC.md §3.8.
  */
 
 import { spawn } from "node:child_process";
@@ -81,13 +79,11 @@ describe("linkOrCopy", () => {
     const payload = "cross-volume-fallback";
     await writeFile(source, payload);
 
-    // ESM export bindings aren't configurable, so vi.spyOn on node:fs/promises
-    // named exports fails. Use vi.doMock + dynamic re-import to stub `link`
-    // with an EXDEV error while leaving `copyFile` real.
+    // vi.doMock — ESM named-export bindings aren't configurable, so vi.spyOn
+    // fails on node:fs/promises. Dynamic re-import stubs `link` with EXDEV
+    // while leaving `copyFile` real.
     vi.resetModules();
     const copySpy = vi.fn<(src: string, dst: string) => Promise<void>>(async (src, dst) => {
-      // Use the synchronous fs.copyFileSync to keep the fallback real and
-      // independent of the promise-module mock we're about to install.
       const fsSync = await import("node:fs");
       fsSync.copyFileSync(src, dst);
     });
@@ -116,7 +112,7 @@ describe("linkOrCopy", () => {
       const read = await readFile(destination, "utf8");
       expect(read).toBe(payload);
 
-      // Confirm the destination is an independent file (not a hardlink).
+      // Confirm destination is an independent file, not a hardlink.
       const srcStat = await stat(source);
       const dstStat = await stat(destination);
       expect(dstStat.nlink).toBe(1);
@@ -151,7 +147,6 @@ describe("resolveRelativeToConfig", () => {
   test("returns an absolute path using OS separators", () => {
     const result = resolveRelativeToConfig(configFile, "libs/foo.jar");
     expect(isAbsolute(result)).toBe(true);
-    // Native separator — forward slash on posix, backslash on win32.
     expect(result.includes(sep)).toBe(true);
   });
 });
@@ -196,8 +191,8 @@ describe("writeFileLF", () => {
 });
 
 describe("installShutdownHandler", () => {
-  // Keep disposers so afterEach can always remove the SIGINT listener even if
-  // a test fails before its own cleanup runs.
+  // Disposers kept here so afterEach always clears the SIGINT listener even
+  // when a test fails before its own cleanup runs.
   const disposers: Array<() => void> = [];
   const spawnedChildren: Array<ReturnType<typeof spawn>> = [];
 
@@ -223,7 +218,6 @@ describe("installShutdownHandler", () => {
   });
 
   test("first Ctrl+C writes gracefulStdin and the child exits cleanly", async () => {
-    // Child reads stdin; exits with code 0 when it sees "STOP".
     const child = spawn(
       process.execPath,
       [
@@ -249,7 +243,7 @@ describe("installShutdownHandler", () => {
     });
     disposers.push(dispose);
 
-    // Give the child a tick to attach its stdin listener.
+    // Wait for the child to attach its stdin listener.
     await new Promise((r) => setTimeout(r, 100));
 
     process.emit("SIGINT");
@@ -263,7 +257,6 @@ describe("installShutdownHandler", () => {
   });
 
   test("child that ignores stdin is killed after graceMs elapses", async () => {
-    // Child does nothing with stdin; only exits when killed.
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], {
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -292,13 +285,10 @@ describe("installShutdownHandler", () => {
     const result = await exited;
     const elapsed = Date.now() - start;
 
-    // The child should not have exited with code 0 — it was killed.
-    // On Unix this surfaces as signal="SIGTERM"; on Windows Node sets
-    // code=1/exitCode varies and signal may be null — accept either
-    // channel as evidence that kill() fired.
+    // Unix surfaces this as signal=SIGTERM; on Windows signal may be null and
+    // code varies — either channel counts as evidence kill() fired.
     const wasKilled = result.signal !== null || result.code !== 0;
     expect(wasKilled).toBe(true);
-    // Should be at least graceMs but not too much more (sanity bound).
     expect(elapsed).toBeGreaterThanOrEqual(250);
 
     dispose();

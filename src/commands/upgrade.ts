@@ -10,7 +10,9 @@ interface GithubRelease {
 }
 
 export interface UpgradeOptions {
+  /** GitHub `owner/repo` slug whose releases are queried. */
   repository: string;
+  /** Optional GitHub token — only needed for rate-limited CI runs. */
   token?: string;
 }
 
@@ -28,6 +30,11 @@ async function fetchLatestRelease(repository: string, token?: string): Promise<G
   return data;
 }
 
+/**
+ * Factory for the `pluggy upgrade` commander command. Prints the latest
+ * GitHub release tag and the install-script incantation — does not modify
+ * the binary on disk.
+ */
 export function upgradeCommand(options: UpgradeOptions): Command {
   return new Command("upgrade")
     .description("Upgrade pluggy to the latest version.")

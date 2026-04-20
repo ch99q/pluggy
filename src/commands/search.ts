@@ -13,7 +13,7 @@ interface ModrinthSearchHit {
   categories?: string[];
   client_side?: string;
   server_side?: string;
-  /** Always "mod" for plugins — Modrinth folds plugins under "mod" + category tags. */
+  /** Always "mod" — Modrinth folds plugins under "mod" + category tags. */
   project_type?: string;
   downloads?: number;
   follows?: number;
@@ -23,7 +23,7 @@ interface ModrinthSearchHit {
   display_categories?: string[];
   /** Supported Minecraft (game) versions, not plugin versions. */
   versions?: string[];
-  /** Modrinth version ID of the latest version — opaque, not a semver. */
+  /** Opaque Modrinth version ID, not a semver. */
   latest_version?: string;
   license?: string;
 }
@@ -52,8 +52,9 @@ export interface SearchResult {
 }
 
 /**
- * Perform the `search` action. Exposed as a helper so tests can drive it
- * without going through commander.
+ * Query Modrinth's `/v2/search` endpoint with the `project_type:plugin` facet
+ * plus optional platform / MC-version filters. Returns the hits plus paging
+ * metadata. Emits human output (or a JSON envelope) as a side effect.
  */
 export async function doSearch(query: string, options: SearchOptions): Promise<SearchResult> {
   if (typeof query !== "string" || query.length === 0) {
@@ -64,9 +65,8 @@ export async function doSearch(query: string, options: SearchOptions): Promise<S
   if (options.platform) facets.push([`categories:${options.platform}`]);
   if (options.version) facets.push([`versions:${options.version}`]);
 
-  // Modrinth's search endpoint has no project-level pre-release filter. The
-  // `--beta` flag gates version resolution later; here it's a no-op, but we
-  // still warn when the user set it so the limitation is surfaced.
+  // Modrinth has no project-level pre-release filter; `--beta` only affects
+  // resolve time. Surface the limitation rather than silently dropping it.
   if (options.beta && !options.json) {
     log.warn(
       "--beta has no effect on search (no project-level pre-release filter); it's honored later at resolve time",
@@ -137,12 +137,10 @@ function printHumanSearch(query: string, result: SearchResult): void {
 }
 
 /**
- * Render a compact summary of the MC versions the hit supports. Returns
- * something like `"1.8.8 … 1.21.8"` for the full span, or a single version
- * when only one is supported. Returns an empty string when nothing is known.
+ * Compact summary of the MC versions the hit supports — `"1.8.8 … 1.21.8"`
+ * for a span, the single version when one, or `""` when unknown.
  *
- * Uses a numeric-segment compare so "1.10.2" sorts after "1.9.4"
- * (lexicographic sort gets it wrong).
+ * Sorts by numeric segment so "1.10.2" comes after "1.9.4".
  */
 function renderGameVersionRange(versions: string[] | undefined): string {
   if (!versions || versions.length === 0) return "";
@@ -162,6 +160,7 @@ function compareGameVersion(a: string, b: string): number {
   return 0;
 }
 
+/** Factory for the `pluggy search` commander command. */
 export function searchCommand(): Command {
   return new Command("search")
     .description("Search Modrinth for plugins by keyword.")

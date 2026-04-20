@@ -1,18 +1,7 @@
 /**
- * File watcher for `pluggy dev`.
- *
- * Watches:
- *   - `<project>/src/` recursively
- *   - every path referenced by `project.resources` (file or directory)
- *   - `project.projectFile` itself (`project.json`)
- *
- * Events are coalesced by `debounceMs` — a burst of saves produces exactly
- * one `onChange` call. Uses `node:fs/promises#watch` (AsyncIterable) rather
- * than `chokidar` to keep the dependency tree small; it's flaky across
- * platforms (especially macOS rename detection) but we accept false-positives
- * over missed events.
- *
- * See docs/SPEC.md §2.11 "Watch and reload".
+ * File watcher for `pluggy dev`. Watches `src/`, every path referenced by
+ * `project.resources`, and `project.json`. Events are coalesced by
+ * `debounceMs` — a burst of saves yields one `onChange`. See §2.11.
  */
 
 import { existsSync, statSync } from "node:fs";
@@ -75,11 +64,9 @@ export function watchProject(project: ResolvedProject, opts: WatchOptions): () =
 }
 
 /**
- * A `fs.watch` call wants either a directory (recursive) or a file. For the
- * project's resource mappings we normalize each declared path into the parent
- * directory it lives in — watching a file on its own works on every OS, but
- * some editors remove-then-rewrite, which evicts the inode and kills the
- * watcher. Watching the containing dir instead survives atomic writes.
+ * Collect directory paths to watch. Resource-file mappings are normalized to
+ * their parent directory — atomic-rewrite editors evict the file's inode,
+ * which kills a file-level watcher; watching the dir survives.
  */
 function collectWatchTargets(project: ResolvedProject): string[] {
   const roots = new Set<string>();
@@ -98,7 +85,7 @@ function collectWatchTargets(project: ResolvedProject): string[] {
         const info = statSync(absolute);
         roots.add(info.isDirectory() ? absolute : dirname(absolute));
       } catch {
-        // Path vanished between existsSync and statSync. Skip.
+        // Path vanished between existsSync and statSync.
       }
     }
   }
@@ -118,8 +105,7 @@ async function consumeWatcher(
       onEvent();
     }
   } catch (err: unknown) {
-    // AbortError is the expected quit path. Platforms vary on its .name
-    // ("AbortError" on Node 20+), so we also accept the explicit flag.
+    // AbortError is the expected quit path; platforms vary on `.name`.
     if (signal.aborted) return;
     const e = err as { name?: string; code?: string };
     if (e.name === "AbortError" || e.code === "ABORT_ERR") return;

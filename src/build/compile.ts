@@ -1,13 +1,7 @@
 /**
- * javac driver.
- *
- * Walks `opts.sourceDir` for `*.java` sources, spawns `javac` directly (no
- * shell), streams output to the logger, and throws with the last 40 lines of
- * stderr on non-zero exit.
- *
- * Cross-platform: uses `delimiter` from `node:path` (`:` on POSIX, `;` on
- * Windows). The executable is `javac`; Node's `spawn` appends `.exe` on
- * Windows automatically.
+ * javac driver. Never invokes a shell — Node's `spawn` handles `.exe` on
+ * Windows automatically. Classpath joins use `delimiter` from `node:path`
+ * (`:` on POSIX, `;` on Windows).
  */
 
 import { spawn } from "node:child_process";
@@ -25,6 +19,11 @@ export interface CompileOptions {
 
 const MAX_STDERR_LINES = 40;
 
+/**
+ * Compile every `.java` under `opts.sourceDir` into `opts.outputDir`.
+ * On a non-zero javac exit, throws with the last 40 lines of stderr so CI
+ * output stays readable.
+ */
 export async function compileJava(project: ResolvedProject, opts: CompileOptions): Promise<void> {
   const sources = await findJavaSources(opts.sourceDir);
   if (sources.length === 0) {
@@ -52,7 +51,6 @@ export async function compileJava(project: ResolvedProject, opts: CompileOptions
     child.stderr?.setEncoding("utf8");
 
     child.stdout?.on("data", (chunk: string) => {
-      // Forward raw javac chatter (usually empty on success) at info level.
       for (const line of chunk.split(/\r?\n/)) {
         if (line.length > 0) log.info(line);
       }

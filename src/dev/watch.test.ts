@@ -1,9 +1,6 @@
 /**
- * Contract tests for src/dev/watch.ts.
- *
- * Mocks `node:fs/promises#watch` so we can emit synthetic change events
- * without touching real files. Verifies debounce behaviour and abort-signal
- * cleanup.
+ * Tests for src/dev/watch.ts. Stubs `node:fs/promises#watch` so change
+ * events can be emitted synthetically, with no real filesystem watchers.
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -14,9 +11,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/tes
 
 import type { ResolvedProject } from "../project.ts";
 
-// Fakes wired through vi.mock. Each call to watch() returns an AsyncIterable
-// whose push queue is backed by the `controllers` map — tests drive events
-// by calling the module-level helpers below.
+// Each mocked `watch()` call returns an AsyncIterable whose push queue lives
+// in `controllers`; tests drive events via `emitEvent`.
 interface FakeIter {
   push: (event: { eventType: string; filename: string }) => void;
   end: () => void;
@@ -121,7 +117,7 @@ describe("watchProject", () => {
 
   beforeEach(async () => {
     workDir = await mkdtemp(join(tmpdir(), "pluggy-dev-watch-"));
-    // Create src and project.json so collectWatchTargets registers watchers.
+    // src/ and project.json must exist for collectWatchTargets to register any watchers.
     const { mkdir } = await import("node:fs/promises");
     await mkdir(join(workDir, "src"), { recursive: true });
     await writeFile(join(workDir, "project.json"), "{}");
@@ -141,7 +137,6 @@ describe("watchProject", () => {
       onChange: async (): Promise<void> => {},
     });
 
-    // Give microtasks time to start the watcher coroutines.
     await new Promise((r) => setTimeout(r, 20));
     expect(watchCount()).toBeGreaterThanOrEqual(1);
     dispose();
@@ -155,12 +150,10 @@ describe("watchProject", () => {
     await new Promise((r) => setTimeout(r, 10));
     expect(watchCount()).toBeGreaterThan(0);
 
-    // Fire several events within the debounce window.
     emitEvent();
     emitEvent();
     emitEvent();
 
-    // Wait longer than the debounce window.
     await new Promise((r) => setTimeout(r, 80));
 
     expect(onChange).toHaveBeenCalledTimes(1);
@@ -196,13 +189,11 @@ describe("watchProject", () => {
     await new Promise((r) => setTimeout(r, 10));
     emitEvent();
 
-    // Dispose before the debounce fires.
     dispose();
 
     await new Promise((r) => setTimeout(r, 100));
     expect(onChange).not.toHaveBeenCalled();
 
-    // All watchers' signals should have aborted.
     for (const c of controllers) {
       expect(c.signal.aborted).toBe(true);
     }
@@ -225,7 +216,6 @@ describe("watchProject", () => {
     await new Promise((r) => setTimeout(r, 20));
 
     const targets = controllers.map((c) => c.target);
-    // Directory targets: src/, project root, i18n/, resources/ (dir holding plugin.yml).
     expect(targets.some((t) => t.endsWith("src"))).toBe(true);
     expect(targets.some((t) => t.endsWith("i18n"))).toBe(true);
     expect(targets.some((t) => t.endsWith("resources"))).toBe(true);

@@ -51,15 +51,16 @@ export interface InfoResult {
 }
 
 /**
- * Perform the `info` action. Exposed separately so tests can drive it without
- * going through commander.
+ * Resolve metadata about a plugin identifier. Dispatches per source kind —
+ * Modrinth and workspace queries hit the network / disk, file returns size +
+ * sha256, maven is a passthrough.
+ *
+ * When invoked inside a pluggy project, Modrinth hits are annotated with a
+ * per-version compatibility hint against the project's `compatibility.versions`.
  */
 export async function doInfo(identifier: string, options: InfoOptions): Promise<InfoResult> {
   const source = parseIdentifier(identifier);
 
-  // Workspace context is optional — info is a global command. If we happen to
-  // be inside a project, we enrich the output with a per-version compatibility
-  // check.
   const ctx = resolveWorkspaceContext(process.cwd());
   const compatVersions =
     ctx?.current?.project.compatibility?.versions ?? ctx?.root.compatibility?.versions ?? [];
@@ -254,6 +255,7 @@ function printHumanInfo(result: InfoResult): void {
   }
 }
 
+/** Factory for the `pluggy info` commander command. */
 export function infoCommand(): Command {
   return new Command("info")
     .alias("show")

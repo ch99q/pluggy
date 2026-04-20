@@ -1,8 +1,6 @@
 /**
- * `pluggy.lock` read / write / verify.
- *
- * The lockfile lives at the repo root and is shared across all workspaces.
- * See docs/SPEC.md §3.5.
+ * `pluggy.lock` read / write / verify. The lockfile lives at the repo root
+ * and is shared across workspaces. See docs/SPEC.md §3.5.
  */
 
 import { readFileSync } from "node:fs";
@@ -30,10 +28,9 @@ export interface Lockfile {
 const LOCKFILE_NAME = "pluggy.lock";
 
 /**
- * Read `<rootDir>/pluggy.lock`. Returns null if the file does not exist.
- *
- * Throws on parse errors or schema mismatch. Error messages always name the
- * offending file path and (where applicable) the offending entry key.
+ * Read `<rootDir>/pluggy.lock`. Returns `null` if missing. Throws on parse
+ * or schema errors; messages always include the offending path (and entry
+ * key, where applicable).
  */
 export function readLock(rootDir: string): Lockfile | null {
   const path = join(rootDir, LOCKFILE_NAME);
@@ -60,15 +57,9 @@ export function readLock(rootDir: string): Lockfile | null {
 }
 
 /**
- * Write `<rootDir>/pluggy.lock` atomically.
- *
- * Atomicity: write to a temporary file in the same directory, then `rename`
- * over the target. `rename` is atomic on POSIX and on Windows' NTFS, so a
- * crash mid-write leaves either the previous file or no temp behind — never
- * a half-written lockfile. If the rename fails we attempt to unlink the temp.
- *
- * The on-disk form is 2-space-indented JSON with a trailing LF. Entries are
- * sorted by key so diffs stay deterministic regardless of insertion order.
+ * Write `<rootDir>/pluggy.lock` atomically: same-dir temp file then `rename`
+ * over the target. Entries are sorted by key so diffs stay deterministic.
+ * Output is 2-space-indented JSON with a trailing LF.
  */
 export async function writeLock(rootDir: string, lock: Lockfile): Promise<void> {
   const path = join(rootDir, LOCKFILE_NAME);
@@ -80,8 +71,7 @@ export async function writeLock(rootDir: string, lock: Lockfile): Promise<void> 
 
   const serialized = `${JSON.stringify({ version: lock.version, entries: sortedEntries }, null, 2)}\n`;
 
-  // Temp file in the same directory guarantees `rename` is same-filesystem.
-  // A PID + random suffix avoids collisions between concurrent writers.
+  // Same-dir temp guarantees rename is same-filesystem; pid+random avoids collisions.
   const tempName = `${LOCKFILE_NAME}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
   const tempPath = join(rootDir, tempName);
 
@@ -89,27 +79,22 @@ export async function writeLock(rootDir: string, lock: Lockfile): Promise<void> 
     await writeFile(tempPath, serialized, "utf8");
     await rename(tempPath, path);
   } catch (err) {
-    // Best-effort cleanup of the temp file if rename failed.
     try {
       await unlink(tempPath);
     } catch {
-      // Temp may not exist (writeFile itself failed) — ignore.
+      // Temp may not exist (writeFile itself failed).
     }
     throw err;
   }
 }
 
 /**
- * Verify that every dependency declared in the given project (across all
- * workspaces) has a matching entry in the lockfile. Returns the list of
- * declarations that are missing or stale; empty means the lockfile is fresh.
+ * Return dependency names that are missing from the lock or stale against
+ * what's declared. Empty means the lockfile is fresh.
  *
- * "Stale" means: an entry exists for the given name but either its source
- * string (`stringifySource`) or its version differs from what was declared.
- *
- * Does NOT re-fetch or re-compute integrity — that is the resolver's job.
- * Extra lockfile entries (present in the lock but not declared) are treated
- * as orphaned, not stale, and are ignored by this function.
+ * "Stale" = lockfile entry exists but its source string or version diverges
+ * from the declaration. Orphaned entries (locked but not declared) are
+ * ignored. Does not refetch or recompute integrity — the resolver does that.
  */
 export function verifyLock(
   lock: Lockfile,
@@ -132,10 +117,6 @@ export function verifyLock(
   }
   return drift;
 }
-
-// ---------------------------------------------------------------------------
-// Internal validation helpers
-// ---------------------------------------------------------------------------
 
 function validateLockfile(parsed: unknown, path: string): Lockfile {
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -197,8 +178,7 @@ function validateEntry(raw: unknown, key: string, path: string): LockfileEntry {
 
 /**
  * Validate an arbitrary `unknown` against the `ResolvedSource` tagged union.
- * Keeping this in one place ensures the on-disk form stays in lock-step with
- * the in-memory grammar owned by `src/source.ts`.
+ * Centralized so the on-disk form stays in lock-step with `src/source.ts`.
  */
 function validateResolvedSource(raw: unknown, key: string, path: string): ResolvedSource {
   if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {

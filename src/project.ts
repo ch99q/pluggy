@@ -3,15 +3,15 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
+/**
+ * Parsed `project.json`. See docs/SPEC.md §1 for field semantics.
+ */
 export interface Project {
   name: string;
   version: string;
   description?: string;
   authors?: string[];
-  /**
-   * Fully-qualified main class. Required for plugin workspaces; not required
-   * on a root `project.json` that declares `workspaces`.
-   */
+  /** Fully-qualified main class. Required for plugin workspaces; not on a root that declares `workspaces`. */
   main?: string;
   ide?: "vscode" | "eclipse" | "intellij";
   compatibility: {
@@ -26,6 +26,7 @@ export interface Project {
   dev?: DevConfig;
 }
 
+/** Project augmented with its resolved on-disk location. */
 export type ResolvedProject = Project & {
   rootDir: string;
   projectFile: string;
@@ -58,6 +59,13 @@ export interface DevConfig {
   extraPlugins?: string[];
 }
 
+/**
+ * OS-appropriate user cache directory for pluggy.
+ *
+ * macOS: `~/Library/Caches/pluggy`.
+ * Windows: `%LOCALAPPDATA%/pluggy/cache`.
+ * Linux/other: `$XDG_CACHE_HOME/pluggy` (defaulting to `~/.cache/pluggy`).
+ */
 export function getCachePath(): string {
   const home = homedir();
   if (process.platform === "darwin") {
@@ -71,6 +79,11 @@ export function getCachePath(): string {
 
 const PROJECT_FILE_NAME = "project.json";
 
+/**
+ * Walk up from `path` until a `project.json` is found, returning the parsed
+ * project plus its resolved location. Returns `undefined` if no project is
+ * found on the way up to the filesystem root.
+ */
 export function resolveProject(path: string): ResolvedProject | undefined {
   let currentPath = path;
   while (currentPath !== dirname(currentPath)) {
@@ -87,6 +100,7 @@ export function resolveProject(path: string): ResolvedProject | undefined {
   return undefined;
 }
 
+/** Read a specific `project.json` by path. Returns `undefined` if missing. */
 export function resolveProjectFile(path: string): ResolvedProject | undefined {
   if (existsSync(path)) {
     const projectFileContent = readFileSync(path, "utf8");
@@ -97,6 +111,7 @@ export function resolveProjectFile(path: string): ResolvedProject | undefined {
   return undefined;
 }
 
+/** `resolveProject` starting from `cwd` (or `process.cwd()` by default). */
 export function getCurrentProject(cwd?: string): ResolvedProject | undefined {
   const path = cwd || process.cwd();
   return resolveProject(path);

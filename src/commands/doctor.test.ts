@@ -1,12 +1,6 @@
 /**
- * Contract tests for src/commands/doctor.ts.
- *
- * Mocks the external-effect checks (java spawn, HEAD requests, real filesystem
- * probes) via the `checks` hook on `runDoctorCommand`. Exercises:
- *   - Every check reports pass/fail and is surfaced in the result.
- *   - Overall exit code is 1 iff any check failed.
- *   - JSON mode emits `{ ok, checks, failures }` on the right stream.
- *   - checkProjectValid names the offending field on malformed input.
+ * Tests for src/commands/doctor.ts. External-effect checks (java spawn,
+ * HEAD requests, cache stat) are replaced via the `checks` hook.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";

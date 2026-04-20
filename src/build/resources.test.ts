@@ -1,6 +1,4 @@
-/**
- * Contract tests for src/build/resources.ts.
- */
+/** Tests for src/build/resources.ts. */
 
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -107,13 +105,11 @@ describe("stageResources", () => {
     await writeFile(join(workDir, "second.yml"), "source: second\n");
     const project = makeProject(workDir, {
       "plugin.yml": "./first.yml",
-      // Second entry resolves to the same output key and must be skipped.
-      // (Using the trailing-segment path so it matches exactly.)
     });
-    // Mutate to add the collision while preserving order.
+    // `./plugin.yml` and `plugin.yml` collide after posix.normalize.
     project.resources = {
       "plugin.yml": "./first.yml",
-      "./plugin.yml": "./second.yml", // same path after posix.normalize
+      "./plugin.yml": "./second.yml",
     };
 
     await stageResources(project, stagingDir);
@@ -135,7 +131,6 @@ describe("stageResources", () => {
     const md = await readFile(join(stagingDir, "README.md"), "utf8");
     const cls = await readFile(join(stagingDir, "X.class"), "utf8");
     expect(md).toBe("# testplugin\n");
-    // .class is NOT allowlisted — verbatim pass-through.
     expect(cls).toBe("${project.name}");
   });
 

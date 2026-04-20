@@ -1,9 +1,4 @@
-/**
- * Contract tests for src/dev/plugins.ts.
- *
- * Builds tiny in-memory jars with `yazl` for jar inspection. Mocks nothing
- * except the file system (through mkdtemp).
- */
+/** Tests for src/dev/plugins.ts. Uses `yazl`-built jar fixtures in tmpdir. */
 
 import { createWriteStream } from "node:fs";
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -143,7 +138,6 @@ describe("stagePlugins", () => {
       "worldedit-7.jar",
     ]);
 
-    // Contents match sources (linkOrCopy preserves bytes).
     expect(await readFile(join(devDir, "plugins", "my-plugin-1.0.0.jar"), "utf8")).toBe("OWN");
     expect(await readFile(join(devDir, "plugins", "worldedit-7.jar"), "utf8")).toBe("DEP1");
     expect(await readFile(join(devDir, "plugins", "debug-tools.jar"), "utf8")).toBe("EXTRA");
@@ -163,7 +157,6 @@ describe("stagePlugins", () => {
     const ownJar = join(workDir, "plugin.jar");
     await writeFile(ownJar, "NEW-OWN");
 
-    // Pre-create an old jar with the same name.
     await writeFile(join(workDir, "existing-dev"), "");
     const { mkdir } = await import("node:fs/promises");
     await mkdir(join(devDir, "plugins"), { recursive: true });

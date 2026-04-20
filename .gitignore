@@ -17,6 +17,9 @@ libs/
 .buildtools/
 .pluggy-build/
 
+# Claude Code runtime state
+.claude/
+
 # IDE files
 .vscode/
 .idea/

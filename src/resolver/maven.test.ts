@@ -1,8 +1,4 @@
-/**
- * Contract tests for src/resolver/maven.ts.
- *
- * All network I/O is mocked.
- */
+/** Contract tests for src/resolver/maven.ts. Network I/O is mocked. */
 
 import { createHash } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
@@ -147,7 +143,7 @@ describe("resolveMaven", () => {
       registries: ["https://repo.example.com"],
     };
     const got = await resolveMaven("g", "a", "1", ctx);
-    // Known SHA-256 of "hello world".
+    // Known SHA-256 of the UTF-8 bytes of "hello world".
     expect(got.integrity).toBe(
       "sha256-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9",
     );

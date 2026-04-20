@@ -1,13 +1,8 @@
 /**
- * Local-file resolver.
- *
- * Resolves `file:<path>` sources. The path is interpreted relative to
- * `ctx.rootDir` (see docs/SPEC.md §3.8 — config-relative path resolution).
- * The jar is content-addressed: SHA-256 of the bytes becomes both the cache
- * key and the integrity hash, so two sources pointing at byte-identical jars
- * share a cache entry.
- *
- * See docs/SPEC.md §2.4.
+ * Local-file resolver. Relative paths resolve against `ctx.rootDir`
+ * (SPEC §3.8). Jars are content-addressed: the SHA-256 of the bytes is
+ * both the cache key and the integrity hash, so byte-identical sources
+ * share a cache entry. See docs/SPEC.md §2.4.
  */
 
 import { createHash } from "node:crypto";
@@ -20,6 +15,10 @@ import type { ResolvedSource } from "../source.ts";
 
 import type { ResolveContext, ResolvedDependency } from "./index.ts";
 
+/**
+ * Resolve `file:<path>@<version>` into a content-addressed cached jar.
+ * Throws when the source path does not exist or cannot be read.
+ */
 export async function resolveFile(
   path: string,
   version: string,
@@ -46,9 +45,8 @@ export async function resolveFile(
   await mkdir(cacheDir, { recursive: true });
   const jarPath = join(cacheDir, `${hex}.jar`);
 
-  // Hardlink/copy so the cache entry exists even if the source moves.
-  // `linkOrCopy` overwrites an existing destination (same hex == same bytes,
-  // so this is a cheap refresh, not a correctness hazard).
+  // linkOrCopy — cache entry stays valid even if the source later moves;
+  // same hex means same bytes, so overwrite is a cheap refresh, not a hazard.
   await linkOrCopy(absSource, jarPath);
 
   const source: ResolvedSource = { kind: "file", path: normalized, version };

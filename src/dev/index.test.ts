@@ -1,9 +1,7 @@
 /**
- * Contract tests for src/dev/index.ts.
- *
- * Mocks every downstream module: buildProject, resolveDependency, the
- * platform registry, and the four other `dev/*` helpers. Verifies `runDev`
- * drives the orchestration in the right order with the right arguments.
+ * Tests for src/dev/index.ts. Every downstream module — buildProject,
+ * resolveDependency, the platform registry, and the four `dev/*` helpers —
+ * is mocked so `runDev`'s orchestration is exercised in isolation.
  */
 
 import { EventEmitter } from "node:events";
@@ -143,31 +141,26 @@ describe("runDev", () => {
     const fakeChild = makeFakeChild();
     vi.mocked(spawnServer).mockReturnValue(fakeChild as unknown as ReturnType<typeof spawnServer>);
 
-    // Do not start watching; simpler assertion on the exit flow.
     vi.mocked(watchProject).mockReturnValue((): void => {});
 
-    // runDev awaits child exit; fire it after a tick.
+    // runDev awaits child exit.
     setImmediate(() => fakeChild.emit("exit", 0, null));
 
     const project = makeProject(workDir);
     await runDev(project, {});
 
-    // 1. getPlatform called with the primary platform id.
     expect(getPlatform).toHaveBeenCalledWith("paper");
 
-    // 2. buildProject called with the project.
     expect(buildProject).toHaveBeenCalledTimes(1);
     expect(vi.mocked(buildProject).mock.calls[0][0]).toBe(project);
 
-    // 3. stageDev called with the platform jar cache path.
     expect(stageDev).toHaveBeenCalledTimes(1);
     const [stageProjArg, stageJarArg, stageOptsArg] = vi.mocked(stageDev).mock.calls[0];
     expect(stageProjArg).toBe(project);
-    // Path convention: <cachePath>/versions/<id>-<ver>-<build>.jar
+    // <cachePath>/versions/<id>-<ver>-<build>.jar
     expect(stageJarArg).toMatch(/[\\/]versions[\\/]paper-1\.21\.8-42\.jar$/);
     expect(stageOptsArg.port).toBeUndefined();
 
-    // 4. stagePlugins called with devDir + own jar + no runtime deps + no extras.
     expect(stagePlugins).toHaveBeenCalledTimes(1);
     const [devDirArg, ownJarArg, runtimeDepsArg, extrasArg] = vi.mocked(stagePlugins).mock.calls[0];
     expect(devDirArg).toBe(devDirPath);
@@ -175,7 +168,6 @@ describe("runDev", () => {
     expect(runtimeDepsArg).toEqual([]);
     expect(extrasArg).toEqual([]);
 
-    // 5. spawnServer called.
     expect(spawnServer).toHaveBeenCalledTimes(1);
     const spawnOpts = vi.mocked(spawnServer).mock.calls[0][0];
     expect(spawnOpts.devDir).toBe(devDirPath);
@@ -183,7 +175,6 @@ describe("runDev", () => {
     expect(spawnOpts.memory).toBe("2G");
     expect(spawnOpts.jvmArgs).toEqual([]);
 
-    // 6. watchProject called with debounceMs=200.
     expect(watchProject).toHaveBeenCalledTimes(1);
     const [watchProjArg, watchOptsArg] = vi.mocked(watchProject).mock.calls[0];
     expect(watchProjArg).toBe(project);
@@ -210,12 +201,11 @@ describe("runDev", () => {
     await runDev(project, { platform: "folia", version: "1.22.0", watch: false });
 
     expect(getPlatform).toHaveBeenCalledWith("folia");
-    // Platform jar path carries the version, which proves getVersionInfo was
-    // called with opts.version. Avoid asserting directly on a platform-bound
-    // method to keep the unbound-method lint happy.
+    // The jar path carries the overridden version, proving getVersionInfo was
+    // invoked with opts.version. Asserting on the path avoids the unbound-
+    // method lint that would fire on `platform.getVersionInfo`.
     const stageJarArg = vi.mocked(stageDev).mock.calls[0][1];
     expect(stageJarArg).toMatch(/folia-1\.22\.0-42\.jar$/);
-    // watch disabled
     expect(watchProject).not.toHaveBeenCalled();
   });
 
@@ -247,7 +237,7 @@ describe("runDev", () => {
         transitiveDeps: [],
       });
 
-    // worldedit is a runtime plugin, lib is not.
+    // worldedit is a runtime plugin; lib is not.
     vi.mocked(isRuntimePlugin).mockResolvedValueOnce(true).mockResolvedValueOnce(false);
 
     setImmediate(() => child.emit("exit", 0, null));
@@ -346,7 +336,7 @@ describe("runDev", () => {
 
     setImmediate(() => child.emit("exit", 0, null));
 
-    // project.dev.onlineMode=true — but --offline should force false.
+    // --offline overrides project.dev.onlineMode=true.
     const project = makeProject(workDir, { dev: { onlineMode: true } });
     await runDev(project, {
       clean: true,
@@ -361,10 +351,9 @@ describe("runDev", () => {
     expect(stageOpts.port).toBe(30_000);
     expect(stageOpts.onlineMode).toBe(false);
 
-    // Also confirm --clean propagated into buildProject.
     expect(vi.mocked(buildProject).mock.calls[0][1].clean).toBe(true);
   });
 });
 
-// Silence a lint reference — test file is the sole consumer of writeFile.
+// Silence an unused-import warning — `writeFile` is only transitively used.
 void writeFile;

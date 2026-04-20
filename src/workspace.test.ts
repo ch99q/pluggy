@@ -1,7 +1,5 @@
 /**
- * Contract tests for src/workspace.ts.
- *
- * See docs/SPEC.md §1.8.
+ * Contract tests for src/workspace.ts. See docs/SPEC.md §1.8.
  */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -310,7 +308,7 @@ describe("topologicalOrder", () => {
 
     const ctx = resolveWorkspaceContext(rootDir);
     const ordered = topologicalOrder(ctx!.workspaces);
-    // Both are leaf nodes — declaration order should be preserved.
+    // Both leaf nodes — declaration order preserved.
     expect(ordered.map((w) => w.name)).toEqual(["ws-a", "ws-b"]);
   });
 

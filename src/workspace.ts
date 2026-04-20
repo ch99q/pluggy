@@ -1,7 +1,5 @@
 /**
- * Workspace discovery, inheritance, and graph operations.
- *
- * See docs/SPEC.md §1.8 for the workspace model.
+ * Workspace discovery, inheritance, and build-order graph. See docs/SPEC.md §1.8.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -12,38 +10,34 @@ import type { Project, Registry, ResolvedProject } from "./project.ts";
 const PROJECT_FILE_NAME = "project.json";
 
 export interface WorkspaceNode {
-  /** The `name` field from the workspace's `project.json`. */
   name: string;
   /** Absolute path to the workspace's root directory. */
   root: string;
-  /** The workspace's merged project config (after inheritance from root). */
+  /** Merged project config (workspace's own fields + inherited fields from root). */
   project: ResolvedProject;
 }
 
 export interface WorkspaceContext {
-  /** The repo-root project (always present when inside any pluggy project). */
   root: ResolvedProject;
-  /** True when cwd resolves to the root `project.json` (not inside a workspace). */
+  /** True when cwd resolves to the root `project.json` rather than to a workspace. */
   atRoot: boolean;
   /** The workspace cwd is inside, if any. Undefined when `atRoot`. */
   current?: WorkspaceNode;
-  /** All declared workspaces, in declaration order. Empty for standalone projects. */
+  /** All declared workspaces in declaration order. Empty for standalone projects. */
   workspaces: WorkspaceNode[];
 }
 
 /**
- * Walk up from `cwd` to find the repo root and determine which workspace
- * (if any) `cwd` belongs to. Merges each workspace's `project.json` with
- * inherited fields from the root per §1.8 inheritance rules.
- *
- * Returns `undefined` if cwd is not inside any pluggy project.
+ * Walk up from `cwd`, resolve the repo root, and classify which workspace
+ * `cwd` sits in. Each workspace's `project.json` is merged with the root's
+ * inheritable fields per SPEC §1.8. Returns `undefined` when `cwd` is not
+ * inside any pluggy project.
  */
 export function resolveWorkspaceContext(cwd: string): WorkspaceContext | undefined {
   const startDir = resolve(cwd);
   const nearest = findNearestProject(startDir);
   if (nearest === undefined) return undefined;
 
-  // Case 1: the nearest project is itself a root that declares workspaces.
   if (Array.isArray(nearest.workspaces) && nearest.workspaces.length > 0) {
     const workspaces = enumerateWorkspaces(nearest);
     const current = findCurrentWorkspace(workspaces, startDir);
@@ -55,8 +49,7 @@ export function resolveWorkspaceContext(cwd: string): WorkspaceContext | undefin
     };
   }
 
-  // Case 2: nearest project does not declare workspaces. Check if it's listed
-  // as a workspace inside a parent project.
+  // Nearest project has no workspaces — check whether a parent project lists it as one.
   const parentDir = dirname(nearest.rootDir);
   const parentProject = parentDir !== nearest.rootDir ? findNearestProject(parentDir) : undefined;
 
@@ -79,7 +72,6 @@ export function resolveWorkspaceContext(cwd: string): WorkspaceContext | undefin
     };
   }
 
-  // Case 3: standalone project.
   return {
     root: nearest,
     atRoot: true,
@@ -89,8 +81,9 @@ export function resolveWorkspaceContext(cwd: string): WorkspaceContext | undefin
 }
 
 /**
- * Topologically sort workspaces by their `workspace:` inter-dependencies.
- * Throws on cycles.
+ * Topologically order workspaces by their `workspace:` inter-dependencies,
+ * producing a build order where each node follows every node it depends on.
+ * Throws on cycles. Unknown workspace deps are ignored (the resolver reports).
  */
 export function topologicalOrder(workspaces: WorkspaceNode[]): WorkspaceNode[] {
   const byName = new Map<string, WorkspaceNode>();
@@ -113,10 +106,7 @@ export function topologicalOrder(workspaces: WorkspaceNode[]): WorkspaceNode[] {
     const deps = workspaceDependencyNames(node);
     for (const depName of deps) {
       const dep = byName.get(depName);
-      if (dep === undefined) {
-        // Unknown workspace dep — skip; resolver is responsible for reporting.
-        continue;
-      }
+      if (dep === undefined) continue;
       visit(dep, [...stack, node.name]);
     }
     state.set(node.name, "done");
@@ -129,9 +119,7 @@ export function topologicalOrder(workspaces: WorkspaceNode[]): WorkspaceNode[] {
   return result;
 }
 
-/**
- * Look up a workspace by name within a context. Throws if not found.
- */
+/** Look up a workspace by name within a context. Throws if not found. */
 export function findWorkspace(context: WorkspaceContext, name: string): WorkspaceNode {
   const hit = context.workspaces.find((w) => w.name === name);
   if (hit !== undefined) return hit;
@@ -168,7 +156,6 @@ function readProjectFile(projectFile: string): ResolvedProject {
 }
 
 function resolveWorkspacePath(rootDir: string, rel: string): string {
-  // Normalize backslashes to forward slashes so both platforms resolve alike.
   const normalized = rel.replace(/\\/g, "/");
   if (isAbsolute(normalized)) return resolve(normalized);
   return resolve(rootDir, normalized);
@@ -198,31 +185,25 @@ function enumerateWorkspaces(root: ResolvedProject): WorkspaceNode[] {
   return nodes;
 }
 
+/**
+ * Apply SPEC §1.8 inheritance: `compatibility`, `authors`, `description`
+ * inherit from the root when the workspace hasn't declared them;
+ * `registries` are merged (root first, de-duped by URL); everything else
+ * (including `version`) stays workspace-local.
+ */
 function mergeInheritance(root: ResolvedProject, own: Project): Project {
-  // Start with the workspace's own fields. Apply inheritance only for the
-  // fields §1.8 says are inherited.
   const merged: Project = { ...own };
 
-  // compatibility: deep replace (workspace wins when declared).
   if (own.compatibility === undefined || own.compatibility === null) {
     merged.compatibility = root.compatibility;
   }
-
-  // authors, description: inherited unless overridden.
   if (own.authors === undefined) {
     merged.authors = root.authors;
   }
   if (own.description === undefined) {
     merged.description = root.description;
   }
-
-  // registries: merged (root + workspace), de-duplicated by URL.
   merged.registries = mergeRegistries(root.registries, own.registries);
-
-  // version: NOT inherited — keep workspace's (or undefined if absent).
-  // name, main, dependencies, shading, resources: workspace-only — keep own.
-  // workspaces: workspace-only (a workspace cannot itself declare nested
-  // workspaces); we leave it as whatever the workspace's project had.
 
   return merged;
 }
@@ -245,9 +226,8 @@ function mergeRegistries(
   return out;
 }
 
+/** Prefix-match cwd against each workspace root; longest prefix wins when nested. */
 function findCurrentWorkspace(workspaces: WorkspaceNode[], cwd: string): WorkspaceNode | undefined {
-  // Pick the workspace whose root directory is a prefix of cwd; if multiple
-  // match (nested), prefer the longest prefix.
   let best: WorkspaceNode | undefined;
   for (const ws of workspaces) {
     if (cwd === ws.root || cwd.startsWith(ws.root + "/") || cwd.startsWith(ws.root + "\\")) {
@@ -264,9 +244,7 @@ function workspaceDependencyNames(node: WorkspaceNode): string[] {
   if (deps === undefined) return [];
   const names: string[] = [];
   for (const value of Object.values(deps)) {
-    // Short-form strings are sugar for a Modrinth version — not a source
-    // string — so they can never reference a workspace. Only long-form
-    // objects with an explicit `workspace:<name>` source count.
+    // Short-form dependency values are Modrinth-version shorthand, not source strings.
     if (typeof value === "string") continue;
     const source = value.source;
     if (source.startsWith("workspace:")) {

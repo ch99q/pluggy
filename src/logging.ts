@@ -1,3 +1,8 @@
+/**
+ * Terminal logging built on picocolors. Honours `NO_COLOR` / `--no-color`
+ * for color, and `-v` / `--verbose` / `DEBUG` for `log.debug` output.
+ */
+
 import process from "node:process";
 import pc from "picocolors";
 
@@ -19,6 +24,7 @@ export const yellow = color(pc.yellow);
 export const blue = color(pc.blue);
 export const brightBlue = color(pc.blueBright);
 
+/** Categorized console logger with consistent prefix glyphs. */
 export const log = {
   info(msg: string): void {
     console.log(msg);

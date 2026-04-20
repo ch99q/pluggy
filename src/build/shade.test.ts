@@ -1,9 +1,4 @@
-/**
- * Contract tests for src/build/shade.ts.
- *
- * Builds tiny in-memory jar fixtures via `yazl`, writes them to a temp
- * directory, and runs applyShading against them. No network or JDK needed.
- */
+/** Tests for src/build/shade.ts. Uses tiny `yazl`-built jar fixtures. */
 
 import { createWriteStream } from "node:fs";
 import { mkdtemp, readFile, rm } from "node:fs/promises";

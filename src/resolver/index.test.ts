@@ -1,8 +1,4 @@
-/**
- * Contract tests for src/resolver/index.ts (dispatcher).
- *
- * See docs/SPEC.md §2.4.
- */
+/** Contract tests for src/resolver/index.ts dispatcher. See docs/SPEC.md §2.4. */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 

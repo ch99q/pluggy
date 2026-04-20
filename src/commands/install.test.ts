@@ -1,9 +1,6 @@
 /**
- * Tests for src/commands/install.ts.
- *
- * Approach: the resolver is network-dependent, so every test mocks
- * `resolveDependency`. Workspace discovery, project parsing, and the lockfile
- * are real (tmpdir-backed).
+ * Tests for src/commands/install.ts. `resolveDependency` is mocked;
+ * workspace discovery, project parsing, and the lockfile are real.
  */
 
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -120,7 +117,6 @@ describe("doInstall: no plugin argument", () => {
         dependencies: { worldedit: "7.3.15", otherdep: "1.0.0" },
       }),
     );
-    // Lock matches one dep but not the other.
     await writeFile(
       join(dir, "pluggy.lock"),
       `${JSON.stringify(
@@ -196,7 +192,6 @@ describe("doInstall: no plugin argument", () => {
   });
 
   test("errors when no project is found at or above cwd", async () => {
-    // `dir` is a bare tmpdir with no project.json, no ancestor project.
     await expect(doInstall({ cwd: dir })).rejects.toThrow(/no pluggy project found/);
   });
 });

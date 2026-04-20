@@ -1,8 +1,7 @@
 /**
- * Dependency resolver — takes a ResolvedSource, produces a ResolvedDependency
- * (with a cache path and integrity hash). Dispatches to per-kind resolvers.
- *
- * See docs/SPEC.md §2.4 (install pipeline) and §3.4 (cache layout).
+ * Dependency resolver — dispatches a `ResolvedSource` to its per-kind
+ * resolver, which produces a `ResolvedDependency` (cached jar path plus
+ * integrity hash). See docs/SPEC.md §2.4 and §3.4.
  */
 
 import type { ResolvedSource } from "../source.ts";
@@ -19,32 +18,25 @@ export interface ResolvedDependency {
   jarPath: string;
   /** SHA-256 of the jar as `"sha256-<hex>"`. */
   integrity: string;
-  /** Transitive dependencies declared by this jar. */
   transitiveDeps: ResolvedDependency[];
 }
 
 export interface ResolveContext {
-  /** Repo root (where pluggy.lock lives). Base for `file:` path resolution. */
+  /** Repo root (where `pluggy.lock` lives). Base for `file:` path resolution. */
   rootDir: string;
   /** Include pre-release versions when resolving from registries. */
   includePrerelease: boolean;
   /** Bypass compatibility checks. */
   force: boolean;
-  /**
-   * Maven registries to try, in order. Required for `maven:` sources;
-   * ignored for other source kinds. Empty array means no registries configured.
-   */
+  /** Maven registries tried in order. Required for `maven:` sources. */
   registries: string[];
-  /**
-   * Workspace context. Required for `workspace:` sources. When a
-   * `workspace:` source is resolved without this set, the resolver throws.
-   */
+  /** Required for `workspace:` sources; resolving one without it throws. */
   workspaceContext?: WorkspaceContext;
 }
 
 /**
- * Dispatch a ResolvedSource to the appropriate per-kind resolver.
- * Straight pass-through: no retries, no fallbacks.
+ * Dispatch a `ResolvedSource` to its per-kind resolver. Straight
+ * pass-through — no retries, no fallbacks.
  */
 export function resolveDependency(
   source: ResolvedSource,

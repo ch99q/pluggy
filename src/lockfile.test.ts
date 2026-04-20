@@ -1,7 +1,5 @@
 /**
- * Contract tests for src/lockfile.ts.
- *
- * See docs/SPEC.md §3.5.
+ * Contract tests for src/lockfile.ts. See docs/SPEC.md §3.5.
  */
 
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
@@ -66,15 +64,12 @@ describe("lockfile I/O", () => {
     await writeLock(rootDir, lock);
     const raw = await readFile(join(rootDir, "pluggy.lock"), "utf8");
     expect(raw.endsWith("\n")).toBe(true);
-    // 2-space indent: the first nested field on line 2 starts with exactly two spaces.
     const lines = raw.split("\n");
     expect(lines[1].startsWith('  "')).toBe(true);
-    // Must not be tab-indented.
     expect(raw.includes("\t")).toBe(false);
   });
 
   test("writeLock sorts entries alphabetically regardless of input order", async () => {
-    // Intentionally insert in reverse-alpha order.
     const lock: Lockfile = {
       version: 1,
       entries: {
@@ -109,10 +104,6 @@ describe("lockfile I/O", () => {
   });
 
   test("writeLock leaves no temp files behind on the happy path", async () => {
-    // Atomicity strategy: write to `pluggy.lock.<pid>.<rand>.tmp`, then rename.
-    // We can't easily inject a mid-write crash without mocking fs internals,
-    // so we assert the observable contract: after a successful writeLock call,
-    // the directory contains exactly `pluggy.lock` and no leftover temp file.
     const lock: Lockfile = { version: 1, entries: {} };
     await writeLock(rootDir, lock);
     const files = await readdir(rootDir);
@@ -152,7 +143,6 @@ describe("lockfile I/O", () => {
           worldedit: {
             source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
             resolvedVersion: "7.3.15",
-            // integrity intentionally missing
             declaredBy: ["my-plugin"],
           },
         },

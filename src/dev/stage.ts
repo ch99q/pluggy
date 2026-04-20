@@ -1,9 +1,7 @@
 /**
  * Stage `<project>/dev/`: link the server jar, write `eula.txt`, render
- * `server.properties` from the project's `dev.serverProperties`, and honour
- * `clean` / `freshWorld` semantics (§2.11).
- *
- * Text files are always written with LF line endings (§3.8).
+ * `server.properties`, and honour `clean` / `freshWorld` semantics (§2.11).
+ * Text files are written LF-only (§3.8).
  */
 
 import { existsSync } from "node:fs";
@@ -33,8 +31,8 @@ const EULA_HEADER =
   "# See https://account.mojang.com/documents/minecraft_eula\n";
 
 /**
- * Prepare `<project>/dev/`: link the server jar, write `eula.txt`, render
- * `server.properties`. Returns the absolute path to the staged dev directory.
+ * Prepare `<project>/dev/` and return its absolute path. `clean` wipes the
+ * directory first; `freshWorld` preserves everything except `world*` subdirs.
  */
 export async function stageDev(
   project: ResolvedProject,
@@ -56,16 +54,13 @@ export async function stageDev(
 
   await mkdir(devDir, { recursive: true });
 
-  // 1. Link the platform server jar as `dev/server.jar`.
   const serverJar = join(devDir, "server.jar");
   await linkOrCopy(platformJarPath, serverJar);
 
-  // 2. Write eula.txt unless the user opted out.
   if (process.env.PLUGGY_DEV_NO_EULA !== "1") {
     await writeFileLF(join(devDir, "eula.txt"), `${EULA_HEADER}eula=true\n`);
   }
 
-  // 3. Render server.properties from project.dev.serverProperties + defaults.
   const serverProperties = renderServerProperties(project, opts);
   await writeFileLF(join(devDir, "server.properties"), serverProperties);
 
@@ -73,13 +68,9 @@ export async function stageDev(
 }
 
 /**
- * Merge user-provided `dev.serverProperties` with pluggy defaults. User-set
- * keys always win; defaults only fill unset keys.
- *
- * Emitted in stable key order: defaults first, then extra user keys in
- * declaration order. Values are stringified with no escaping (Minecraft's
- * properties reader is forgiving, and our defaults don't contain any of the
- * characters that would require escaping).
+ * Merge user `dev.serverProperties` with pluggy defaults. Defaults come
+ * first in emit order, then any extra user keys in declaration order. User
+ * values win on conflict.
  */
 function renderServerProperties(project: ResolvedProject, opts: StageDevOptions): string {
   const dev = project.dev ?? {};
@@ -96,9 +87,6 @@ function renderServerProperties(project: ResolvedProject, opts: StageDevOptions)
     ["server-port", port],
   ];
 
-  // Build the effective map: defaults first, then overlay every user key. This
-  // preserves default ordering for the keys the user didn't override, and
-  // appends any new keys at the end in declaration order.
   const effective = new Map<string, string | number | boolean>();
   for (const [key, value] of defaults) {
     effective.set(key, hasUser(key) ? (userProps[key] as string | number | boolean) : value);

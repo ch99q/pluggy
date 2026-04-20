@@ -23,10 +23,7 @@ export interface CheckResult {
 export interface DoctorCommandOptions {
   json?: boolean;
   cwd?: string;
-  /**
-   * Per-check hooks exposed for testing so the suite doesn't need to spawn
-   * a real JVM, hit the network, or exercise the filesystem.
-   */
+  /** Per-check overrides used by tests to avoid spawning a JVM or hitting the network. */
   checks?: {
     java?: () => Promise<CheckResult>;
     cache?: () => Promise<CheckResult>;
@@ -44,6 +41,11 @@ export interface DoctorCommandResult {
   checks: CheckResult[];
 }
 
+/**
+ * Run every environment and project-validation check, returning the
+ * aggregated verdict. `exitCode` is 1 iff any check has `status: "fail"` —
+ * warns are informational only.
+ */
 export async function runDoctorCommand(
   opts: DoctorCommandOptions = {},
 ): Promise<DoctorCommandResult> {
@@ -56,34 +58,26 @@ export async function runDoctorCommand(
   const hooks = opts.checks ?? {};
   const all: CheckResult[] = [];
 
-  // 1. Java toolchain.
   all.push(await (hooks.java ? hooks.java() : checkJava(context)));
-
-  // 2. Cache reachability + size.
   all.push(await (hooks.cache ? hooks.cache() : checkCache()));
 
-  // 3. Registries.
   const registryProject = context.current?.project ?? context.root;
   const regResults = await (hooks.registries
     ? hooks.registries(registryProject)
     : checkRegistries(registryProject));
   all.push(...regResults);
 
-  // 4. project.json validity — for every workspace we know about, so one
-  //    invalid workspace is surfaced even if the root is fine.
+  // Validate every workspace so one bad leaf surfaces even if the root is fine.
   const toValidate = projectsForValidation(context);
   for (const project of toValidate) {
     all.push(hooks.project ? hooks.project(project) : checkProjectValid(project));
   }
 
-  // 5. Workspace graph.
   all.push(hooks.workspace ? hooks.workspace(context) : checkWorkspaceGraph(context));
 
-  // 6. Descriptor family consistency — one check per buildable project.
   const descResults = hooks.descriptor ? hooks.descriptor(context) : checkDescriptors(context);
   all.push(...descResults);
 
-  // 7. Outdated deps — placeholder.
   all.push(await (hooks.outdated ? hooks.outdated() : checkOutdatedPlaceholder()));
 
   const hardFailures = all.filter((c) => c.status === "fail");
@@ -118,17 +112,18 @@ export async function runDoctorCommand(
   return { ok, exitCode, checks: all };
 }
 
-// ---------------------------------------------------------------------------
-// Default checks
-// ---------------------------------------------------------------------------
-
+/**
+ * Probe `java -version`, parsing the major version from its output. Warns
+ * when the toolchain is outside the 8-21 window required by BuildTools-based
+ * platforms (spigot, bukkit).
+ */
 export async function checkJava(context: WorkspaceContext): Promise<CheckResult> {
   const target = context.current?.project ?? context.root;
   const primaryPlatform = target.compatibility?.platforms?.[0];
 
   try {
     const out = await runJavaVersion();
-    // `java -version` prints to stderr on most JDKs.
+    // `java -version` writes to stderr on most JDKs.
     const combined = `${out.stdout}\n${out.stderr}`;
     const match =
       combined.match(/version "(\d+)(?:\.(\d+))?[^"]*"/) ??
@@ -138,7 +133,6 @@ export async function checkJava(context: WorkspaceContext): Promise<CheckResult>
       : undefined;
     const detail = major === undefined ? combined.split("\n")[0] : `Java ${major}`;
 
-    // BuildTools-based platforms (spigot, bukkit) need 8-21. Warn if outside.
     if (
       primaryPlatform !== undefined &&
       (primaryPlatform === "spigot" || primaryPlatform === "bukkit") &&
@@ -183,6 +177,10 @@ async function runJavaVersion(): Promise<{ stdout: string; stderr: string }> {
   });
 }
 
+/**
+ * Stat the cache directory and verify it's writable by touching a temp file.
+ * Reports size as the detail string on the pass result.
+ */
 export async function checkCache(): Promise<CheckResult> {
   const path = getCachePath();
   try {
@@ -203,7 +201,6 @@ export async function checkCache(): Promise<CheckResult> {
         detail: `cache path exists but is not a directory: ${path}`,
       };
     }
-    // Writable? Touch a temp file.
     const probe = join(path, `.pluggy-doctor-probe-${process.pid}`);
     try {
       await writeFile(probe, "");
@@ -253,7 +250,7 @@ async function dirSize(path: string): Promise<number> {
           const s = await stat(full);
           total += s.size;
         } catch {
-          // unreadable entry — skip
+          // unreadable entry
         }
       }
     }
@@ -262,6 +259,7 @@ async function dirSize(path: string): Promise<number> {
   return total;
 }
 
+/** HEAD each declared registry URL; warn on non-2xx/4xx or network failure. */
 export async function checkRegistries(project: ResolvedProject): Promise<CheckResult[]> {
   const out: CheckResult[] = [];
   const registries = project.registries ?? [];
@@ -310,6 +308,10 @@ async function checkOneRegistry(url: string): Promise<CheckResult> {
 const NAME_RE = /^[a-zA-Z0-9_]+$/;
 const VERSION_RE = /^\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?$/;
 
+/**
+ * Validate the structural fields of a single `project.json`. Names the
+ * offending field in `detail` so CI output points at the right key.
+ */
 export function checkProjectValid(project: ResolvedProject): CheckResult {
   const label = `project.json (${project.name ?? "unknown"})`;
   if (typeof project.name !== "string" || !NAME_RE.test(project.name)) {
@@ -362,6 +364,7 @@ export function checkProjectValid(project: ResolvedProject): CheckResult {
   };
 }
 
+/** Run topological order over workspaces; fails on cycles. */
 export function checkWorkspaceGraph(context: WorkspaceContext): CheckResult {
   const label = "Workspace graph";
   if (context.workspaces.length === 0) {
@@ -381,13 +384,17 @@ export function checkWorkspaceGraph(context: WorkspaceContext): CheckResult {
   }
 }
 
+/**
+ * Run `pickDescriptor` across every buildable project so cross-family
+ * compatibility errors are surfaced before a build attempts them.
+ */
 export function checkDescriptors(context: WorkspaceContext): CheckResult[] {
   const targets =
     context.workspaces.length > 0 ? context.workspaces.map((w) => w.project) : [context.root];
 
   const out: CheckResult[] = [];
   for (const project of targets) {
-    // Root in a multi-workspace repo has no descriptor of its own.
+    // The root in a multi-workspace repo has no descriptor of its own.
     if (context.workspaces.length > 0 && project === context.root) continue;
 
     const label = `Descriptor family (${project.name})`;
@@ -424,13 +431,7 @@ export async function checkOutdatedPlaceholder(): Promise<CheckResult> {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function projectsForValidation(context: WorkspaceContext): ResolvedProject[] {
-  // Always validate the root; also validate each workspace so a bad leaf
-  // gets named.
   const out: ResolvedProject[] = [context.root];
   for (const ws of context.workspaces) {
     out.push(ws.project);
@@ -451,6 +452,7 @@ function printCheck(c: CheckResult): void {
   log.info(`  ${marker} ${c.label}${detail}`);
 }
 
+/** Factory for the `pluggy doctor` commander command. */
 export function doctorCommand(): Command {
   return new Command("doctor")
     .description("Check your environment and project for common issues.")

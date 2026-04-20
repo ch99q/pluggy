@@ -1,8 +1,6 @@
 /**
- * Contract tests for the Velocity descriptor generator.
- *
- * Velocity expects a JSON descriptor at `velocity-plugin.json` at the jar root.
- * Because the output is JSON, we parse with `JSON.parse` and assert on shape.
+ * Contract tests for the Velocity descriptor generator. Output is JSON, so
+ * tests parse with `JSON.parse` and assert on shape.
  */
 
 import { describe, expect, test } from "vite-plus/test";
@@ -68,9 +66,6 @@ describe("velocityDescriptor.generate", () => {
 });
 
 describe("deriveVelocityId", () => {
-  // Derivation rule: lowercase the name, replace any char outside [a-z0-9_-]
-  // with '-', and prefix with "p-" if the result doesn't start with a letter.
-
   test("lowercases a plain name", () => {
     expect(deriveVelocityId("MyPlugin")).toBe("myplugin");
   });

@@ -1,8 +1,4 @@
-/**
- * Tests for src/commands/list.ts (the `doList` helper).
- *
- * Uses a fake project tree on disk (via `mkdtemp`) for each case.
- */
+/** Tests for src/commands/list.ts. Uses a tmpdir-backed project tree. */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -55,7 +51,6 @@ describe("doList — standalone", () => {
         ],
       }),
     );
-    // Lockfile with one resolved entry; the other remains unresolved.
     await writeFile(
       join(rootDir, "pluggy.lock"),
       JSON.stringify({
@@ -81,10 +76,10 @@ describe("doList — standalone", () => {
     expect(byName.customlib.resolvedVersion).toBeNull();
     expect(byName.customlib.source.kind).toBe("file");
 
-    // Registries: credentials elided.
     expect(result.registries).toHaveLength(2);
     const authRegistry = result.registries.find((r) => r.url.includes("private"))!;
     expect(authRegistry.authenticated).toBe(true);
+    // Credentials must be elided — JSON output feeds CI logs.
     expect(JSON.stringify(result.registries)).not.toContain("password");
     expect(JSON.stringify(result.registries)).not.toContain("secret");
   });

@@ -1,10 +1,8 @@
 /**
- * Runtime plugin detection + `dev/plugins/` population.
- *
- * A dependency is a *runtime plugin* iff its jar contains the primary
- * platform's descriptor file (e.g. `plugin.yml`). Compile-time libraries
- * are excluded from `dev/plugins/` but remain on the build classpath.
- * See docs/SPEC.md §2.11.
+ * Runtime plugin detection + `dev/plugins/` population. A dependency is a
+ * *runtime plugin* iff its jar contains the primary platform's descriptor
+ * file (e.g. `plugin.yml`); compile-time libraries are excluded from
+ * `dev/plugins/` but stay on the build classpath. See §2.11.
  */
 
 import { mkdir } from "node:fs/promises";
@@ -17,8 +15,8 @@ import { linkOrCopy } from "../portable.ts";
 import type { ResolvedDependency } from "../resolver/index.ts";
 
 /**
- * Return true iff the jar at `jarPath` contains an entry whose name equals
- * `descriptor.path`. Read-only — nothing is extracted.
+ * True iff the jar at `jarPath` contains an entry named `descriptor.path`.
+ * Read-only — no extraction.
  */
 export function isRuntimePlugin(jarPath: string, descriptor: DescriptorSpec): Promise<boolean> {
   return new Promise<boolean>((resolvePromise, rejectPromise) => {
@@ -57,12 +55,9 @@ export function isRuntimePlugin(jarPath: string, descriptor: DescriptorSpec): Pr
 }
 
 /**
- * Populate `<devDir>/plugins/` with the user's plugin jar, every
- * runtime-plugin dependency, and the `extraPlugins` jars.
- *
- * All paths are linked (hardlink with copy fallback, per §3.8). Destination
- * basenames come from each source's basename — callers must ensure unique
- * names (the build pipeline already scopes its output by name+version).
+ * Populate `<devDir>/plugins/` with the user's plugin jar, every runtime-
+ * plugin dep, and the `extraPlugins` jars. Each is hardlinked (copy
+ * fallback) under its basename — callers must ensure unique names.
  */
 export async function stagePlugins(
   devDir: string,

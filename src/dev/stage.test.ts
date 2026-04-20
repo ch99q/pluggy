@@ -1,6 +1,4 @@
-/**
- * Contract tests for src/dev/stage.ts.
- */
+/** Tests for src/dev/stage.ts. */
 
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -53,19 +51,15 @@ describe("stageDev", () => {
     const devDir = await stageDev(project, serverJar, {});
     expect(devDir).toBe(join(workDir, "dev"));
 
-    // server.jar exists and has the source bytes.
     const linkedBytes = await readFile(join(devDir, "server.jar"), "utf8");
     expect(linkedBytes).toBe("FAKE-SERVER-JAR");
 
-    // eula.txt is the header + eula=true.
     const eula = await readFile(join(devDir, "eula.txt"), "utf8");
     expect(eula).toContain("pluggy");
     expect(eula).toContain("eula=true");
-    // LF only — no CRLF in output.
     const raw = await readFile(join(devDir, "eula.txt"));
     expect(raw.includes(Buffer.from("\r\n"))).toBe(false);
 
-    // server.properties: defaults rendered.
     const props = await readFile(join(devDir, "server.properties"), "utf8");
     expect(props).toContain("motd=testplugin dev");
     expect(props).toContain("online-mode=false");
@@ -77,9 +71,7 @@ describe("stageDev", () => {
     const project = makeProject(workDir);
     const devDir = await stageDev(project, serverJar, {});
 
-    // server.properties still written.
     await stat(join(devDir, "server.properties"));
-    // eula.txt NOT written.
     await expect(stat(join(devDir, "eula.txt"))).rejects.toThrow();
   });
 
@@ -123,7 +115,6 @@ describe("stageDev", () => {
 
     await expect(stat(join(devDir, "world"))).rejects.toThrow();
     await expect(stat(join(devDir, "leftover.txt"))).rejects.toThrow();
-    // server.jar re-created.
     await stat(join(devDir, "server.jar"));
   });
 
@@ -143,7 +134,6 @@ describe("stageDev", () => {
     await expect(stat(join(devDir, "world"))).rejects.toThrow();
     await expect(stat(join(devDir, "world_nether"))).rejects.toThrow();
     await expect(stat(join(devDir, "world_the_end"))).rejects.toThrow();
-    // Non-world dirs/files preserved.
     const kept = await readFile(join(devDir, "plugins", "debug.jar"), "utf8");
     expect(kept).toBe("KEEP");
     const logs = await readFile(join(devDir, "logs.txt"), "utf8");

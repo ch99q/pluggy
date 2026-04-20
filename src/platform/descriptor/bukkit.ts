@@ -1,9 +1,6 @@
 import type { DescriptorSpec } from "../platform.ts";
 
-/**
- * Bukkit-family descriptor (paper, folia, spigot, bukkit).
- * Written to `plugin.yml` at the jar root.
- */
+/** Bukkit-family descriptor (paper, folia, spigot, bukkit) → `plugin.yml`. */
 export const bukkitDescriptor: DescriptorSpec = {
   path: "plugin.yml",
   format: "yaml",
@@ -33,15 +30,14 @@ export const bukkitDescriptor: DescriptorSpec = {
       }
     }
 
-    // Always LF; trailing newline so the file ends cleanly.
     return `${lines.join("\n")}\n`;
   },
 };
 
 /**
- * Derive a Bukkit `api-version` (major.minor) from a full MC version string.
- * e.g. "1.21.8" -> "1.21", "1.21" -> "1.21". Returns undefined for missing or
- * malformed input (fewer than 2 dot-segments that look like numbers).
+ * Derive a Bukkit `api-version` (major.minor) from a full MC version:
+ * "1.21.8" → "1.21". Returns `undefined` when the input is missing or
+ * lacks two numeric dot-segments.
  */
 function deriveApiVersion(primaryVersion: string | undefined): string | undefined {
   if (!primaryVersion) return undefined;
@@ -53,30 +49,20 @@ function deriveApiVersion(primaryVersion: string | undefined): string | undefine
 }
 
 /**
- * Emit a YAML scalar. Quote when the value contains YAML-meaningful characters
- * or would otherwise be ambiguous (starts with a sigil, looks like a bool /
- * number / null, contains a colon-space, a hash, control chars, etc.).
- *
- * Booleans and numbers are emitted as bare tokens by the caller when
- * appropriate; this function always treats its input as a string value.
+ * Emit a YAML scalar, double-quoting when the value would otherwise be
+ * parsed as a bool/null/number or contains block-structure characters.
  */
 function yamlScalar(value: string): string {
   if (value.length === 0) return '""';
 
-  // Characters that force quoting when present anywhere in the string.
-  // Colon, hash, quotes, backslash, tab, and anything in the block-structure
-  // family. We conservatively quote on any of these rather than try to be
-  // clever about "colon-space" vs "colon-end".
   const needsQuoteChars = /[:#"'\\\t\n\r]/.test(value);
 
-  // Characters that force quoting only when they appear as the first char.
   const firstChar = value[0];
   const reservedFirst = "!&*?|>%@`-[]{},";
   const startsWithSpace = firstChar === " ";
   const endsWithSpace = value[value.length - 1] === " ";
   const startsWithReserved = reservedFirst.includes(firstChar);
 
-  // Tokens YAML 1.1/1.2 interpret specially as scalars.
   const lowered = value.toLowerCase();
   const reservedWord =
     lowered === "true" ||
@@ -101,7 +87,6 @@ function yamlScalar(value: string): string {
     return value;
   }
 
-  // Double-quote and escape \ and " (and control chars via JSON-style escapes).
   let escaped = "";
   for (const ch of value) {
     if (ch === "\\") escaped += "\\\\";

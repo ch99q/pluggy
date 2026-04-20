@@ -1,9 +1,4 @@
-/**
- * Tests for src/commands/info.ts (the `doInfo` helper).
- *
- * Network I/O is mocked via `vi.stubGlobal("fetch", ...)`. File-source tests
- * use a tmp dir for the jar.
- */
+/** Tests for src/commands/info.ts. `fetch` is stubbed; file tests use tmpdir. */
 
 import { createHash } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -25,7 +20,6 @@ function errorResponse(status: number, statusText: string): Response {
   return new Response(null, { status, statusText });
 }
 
-// Keep stdout quiet during tests.
 const origLog = console.log;
 beforeEach(() => {
   console.log = () => {};

@@ -1,9 +1,6 @@
 /**
- * Integration-ish tests for src/build/index.ts.
- *
- * Mocks the heavy pieces (resolver, compiler) and verifies the orchestrator
- * drives the pipeline in order with the right inputs. Does NOT run javac or
- * actually produce a working plugin jar.
+ * Tests for src/build/index.ts. Mocks resolver and javac; verifies the
+ * pipeline fires stages in order with the right inputs.
  */
 
 import { EventEmitter } from "node:events";
@@ -17,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/tes
 import type { ResolvedDependency } from "../resolver/index.ts";
 import type { ResolvedProject } from "../project.ts";
 
-// --- Mocks ------------------------------------------------------------------
 vi.mock("../resolver/index.ts", () => ({
   resolveDependency: vi.fn(),
 }));
@@ -98,15 +94,13 @@ describe("buildProject", () => {
   });
 
   test("drives the pipeline: resolve deps, stage resources, compile, shade, zip", async () => {
-    // Scaffold sources.
     await mkdir(join(workDir, "src", "com", "example"), { recursive: true });
     await writeFile(
       join(workDir, "src", "com", "example", "Main.java"),
       "package com.example; class Main {}",
     );
 
-    // Dep jars must exist on disk for the zip/shade stages, but we never
-    // compile-for-real.
+    // Jars must exist on disk for the zip/shade stages.
     const depJar = join(workDir, "fake-dep.jar");
     await writeFile(depJar, "FAKE JAR BYTES");
     const apiJar = join(workDir, "fake-api.jar");
@@ -115,11 +109,9 @@ describe("buildProject", () => {
     vi.mocked(resolveDependency).mockResolvedValueOnce(fakeDep("worldedit", depJar));
     vi.mocked(resolveMaven).mockResolvedValueOnce(fakeMavenDep("paper-api", apiJar));
 
-    // Compiler mock: write a fake class file into the staging dir so the
-    // zipping step produces a non-empty archive.
+    // Write a fake class file from the mocked javac so the zip step has content.
     vi.mocked(spawn).mockImplementation((_cmd: unknown, _args: unknown, _opts: unknown) => {
       const handle = makeFakeChild();
-      // Find the output directory from -d argument to the mock and write a file.
       const args = _args as string[];
       const dIdx = args.indexOf("-d");
       if (dIdx !== -1) {
@@ -142,16 +134,11 @@ describe("buildProject", () => {
 
     const result = await buildProject(project, {});
 
-    // Output jar written.
     expect(result.outputPath).toBe(join(workDir, "bin", "testplugin-1.0.0.jar"));
     expect(result.sizeBytes).toBeGreaterThan(0);
     expect(result.durationMs).toBeGreaterThanOrEqual(0);
-    await stat(result.outputPath); // throws if missing
+    await stat(result.outputPath);
 
-    // Descriptor auto-generated into the staging tree (so it's in the jar).
-    // Hard to introspect the zip without pulling in yauzl here; instead,
-    // check the mock wiring: compiler was called with classpath that
-    // includes both the dep jar and the platform API jar.
     expect(spawn).toHaveBeenCalledTimes(1);
     const argv = vi.mocked(spawn).mock.calls[0][1] as string[];
     const cpIdx = argv.indexOf("-cp");
@@ -160,13 +147,11 @@ describe("buildProject", () => {
     expect(cp).toContain(depJar);
     expect(cp).toContain(apiJar);
 
-    // Resolver saw the declared dep with proper Modrinth source dispatch.
     expect(resolveDependency).toHaveBeenCalledTimes(1);
     const [dispatchedSource, ctxArg] = vi.mocked(resolveDependency).mock.calls[0];
     expect(dispatchedSource).toEqual({ kind: "modrinth", slug: "worldedit", version: "7.3.15" });
     expect(ctxArg.registries).toContain("https://repo.maven.org/maven2/");
 
-    // Platform API resolved via resolveMaven with the paper-api coord.
     expect(resolveMaven).toHaveBeenCalledTimes(1);
     const [groupId, artifactId] = vi.mocked(resolveMaven).mock.calls[0];
     expect(groupId).toBe("io.papermc.paper");
@@ -241,9 +226,6 @@ describe("buildProject", () => {
     });
     await buildProject(project, {});
 
-    // The user-supplied plugin.yml was written into staging (before
-    // descriptor auto-generation was skipped). Contains the custom comment
-    // and substituted name.
     const stagedYml = await readFile(join(capturedOutDir ?? "/nope", "plugin.yml"), "utf8");
     expect(stagedYml).toContain("# user-supplied");
     expect(stagedYml).toContain("name: testplugin");

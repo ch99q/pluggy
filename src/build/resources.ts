@@ -1,14 +1,8 @@
 /**
- * Resource staging.
- *
- * Walks `project.resources`, copies files into the staging directory, and
- * applies template substitution on text files whose extension is on the
- * allowlist (see docs/SPEC.md §1.7).
- *
- * Conflict rule: first-declared entry wins when two `resources` entries
- * resolve to the same output path. Subsequent collisions are skipped with a
- * warning log — neither a hard error nor silent, so users notice typos
- * without losing a build over them.
+ * Resource staging — walks `project.resources`, copies files into staging,
+ * and applies `${project.x}` substitution on text files whose extension is
+ * on the allowlist (§1.7). First-declared entry wins on output-path
+ * collisions; duplicates are skipped with a warning.
  */
 
 import { existsSync } from "node:fs";
@@ -22,6 +16,11 @@ import { replace } from "../template.ts";
 
 const TEMPLATE_EXTENSIONS = new Set([".yml", ".yaml", ".json", ".properties", ".txt", ".md"]);
 
+/**
+ * Copy every entry in `project.resources` into `stagingDir`, applying
+ * template substitution to allowlisted text extensions and hardlink-falling-
+ * back-to-copy for everything else.
+ */
 export async function stageResources(project: ResolvedProject, stagingDir: string): Promise<void> {
   const resources = project.resources;
   if (resources === undefined || resources === null) return;
@@ -39,7 +38,7 @@ export async function stageResources(project: ResolvedProject, stagingDir: strin
 
   const written = new Set<string>();
 
-  // Iterate in declaration order: first-wins conflict rule depends on this.
+  // First-wins on conflicts depends on declaration-order iteration.
   for (const [outKey, srcRel] of Object.entries(resources)) {
     const srcAbs = resolveSourcePath(project.rootDir, srcRel);
     const isDir = outKey.endsWith("/");
@@ -76,8 +75,7 @@ async function copyDirectory(
   for (const name of entries) {
     const childAbs = join(currentDir, name);
     const info = await stat(childAbs);
-    // Build the jar-relative output path using POSIX separators: output paths
-    // in zip entries are always forward-slashed.
+    // Zip entry paths are always forward-slashed, regardless of host OS.
     const relFromRoot = childAbs
       .slice(dirRoot.length + 1)
       .split(/[/\\]/)
@@ -89,8 +87,7 @@ async function copyDirectory(
     } else if (info.isFile()) {
       await writeEntry(childAbs, outPath, stagingDir, templateContext, written);
     }
-    // Symlinks and specials are intentionally skipped — jar entries only
-    // support regular files and directories.
+    // Symlinks and specials are skipped — jar entries only support files.
   }
 }
 
@@ -117,8 +114,8 @@ async function writeEntry(
   templateContext: Record<string, unknown>,
   written: Set<string>,
 ): Promise<void> {
-  // Normalize to POSIX-style for the written-set key so OS separators don't
-  // produce phantom collisions.
+  // POSIX-normalize the written-set key so OS separators don't produce
+  // phantom collisions.
   const key = posix.normalize(outPath);
   if (written.has(key)) {
     log.warn(
@@ -137,8 +134,6 @@ async function writeEntry(
     const substituted = replace(raw, templateContext);
     await writeFileLF(destination, substituted);
   } else {
-    // Binary: byte-identical. linkOrCopy handles same-volume hardlink with a
-    // copy fallback.
     await linkOrCopy(srcAbs, destination);
   }
 }

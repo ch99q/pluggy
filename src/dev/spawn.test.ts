@@ -1,9 +1,4 @@
-/**
- * Contract tests for src/dev/spawn.ts.
- *
- * Mocks `node:child_process#spawn` and `installShutdownHandler` so we never
- * launch a real JVM. Verifies argv construction and stdio layout.
- */
+/** Tests for src/dev/spawn.ts. `spawn` + `installShutdownHandler` mocked. */
 
 import { EventEmitter } from "node:events";
 
@@ -38,7 +33,6 @@ interface FakeChild extends EventEmitter {
 
 function makeFakeChild(): FakeChild {
   const ee = new EventEmitter() as FakeChild;
-  // Minimal writable-stream shim for stdin.
   const stdin = new EventEmitter() as unknown as NodeJS.WritableStream;
   (stdin as unknown as { destroyed: boolean }).destroyed = false;
   (stdin as unknown as { writable: boolean }).writable = true;

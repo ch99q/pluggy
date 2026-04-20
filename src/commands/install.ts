@@ -19,11 +19,7 @@ import {
   type ScopeTarget,
 } from "./context.ts";
 
-/**
- * Parameters for the non-action install helper. Flattens both per-command
- * options and the subset of global options the command cares about, so tests
- * can invoke it with a plain object.
- */
+/** Flattened per-command + global options consumed by `doInstall`. */
 export interface InstallOptions {
   plugin?: string;
   force?: boolean;
@@ -42,10 +38,10 @@ export interface InstallResult {
 }
 
 /**
- * The actual install action, split out from the commander wrapper so tests
- * can exercise it without routing through `program.parseAsync`.
- *
- * Returns a summary for the caller (the wrapper converts it to stdout).
+ * Run `pluggy install`. If `opts.plugin` is set, adds the single identifier
+ * to the target workspace's `project.json` and folds it into the lockfile;
+ * otherwise resolves every declared dependency across the scope and rewrites
+ * `pluggy.lock`.
  */
 export async function doInstall(opts: InstallOptions): Promise<InstallResult> {
   const scope = resolveScope({
@@ -63,16 +59,12 @@ export async function doInstall(opts: InstallOptions): Promise<InstallResult> {
   return installAll(opts, scope);
 }
 
-/**
- * `install` with no plugin argument — resolve everything already declared
- * across the targeted scope, writing a fresh lockfile if drift is present.
- */
 async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<InstallResult> {
   const declared = collectDeclared(scope.targets);
 
-  // Collapse per-target declarations by name. The lockfile is flat and shared
-  // across the repo, so two workspaces declaring the same dep share a single
-  // entry — we just extend its `declaredBy` list.
+  // The lockfile is flat: two workspaces declaring the same dep share one
+  // entry with a merged `declaredBy`. Conflicting source/version between
+  // workspaces is fatal — we can't pick a winner.
   const byName = new Map<
     string,
     { source: ReturnType<typeof parseSource>; declaredBy: string[] }
@@ -85,8 +77,6 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
       byName.set(name, { source: resolvedSource, declaredBy: [declaredBy] });
       continue;
     }
-    // If two workspaces disagree on the source/version, that's a real conflict
-    // the resolver can't silently paper over. Surface it rather than pick one.
     if (
       stringifySource(existing.source) !== stringifySource(resolvedSource) ||
       existing.source.version !== resolvedSource.version
@@ -111,15 +101,11 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
   const drift = verifyLock(existingLock, declaredMap);
 
   if (drift.length === 0 && opts.force !== true) {
-    // Nothing to do. Still write back with updated declaredBy if it has drifted?
-    // Spec §3.5 doesn't require that — treat "fresh" as a no-op.
     const result: InstallResult = { installed: [], skipped: [...byName.keys()] };
     emitInstallResult(opts, result, { message: "lockfile is fresh; nothing to install." });
     return result;
   }
 
-  // Anything not in drift but already locked is effectively a skip; the rest
-  // we (re-)resolve. `--force` re-resolves every declaration.
   const toResolve = opts.force === true ? [...byName.keys()] : drift;
   const skipped = [...byName.keys()].filter((n) => !toResolve.includes(n));
 
@@ -133,9 +119,8 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
     nextEntries[name] = toLockEntry(resolved, info.declaredBy);
   }
 
-  // Drop lock entries that aren't declared anywhere (orphans are user-visible
-  // clutter — and §3.5 ranges across all declarations, so after a full resolve
-  // run the lock should only contain what's declared).
+  // Drop orphan entries — §3.5 ranges over all declarations, so after a full
+  // resolve run the lock should only contain what's declared.
   for (const key of Object.keys(nextEntries)) {
     if (!byName.has(key)) {
       delete nextEntries[key];
@@ -149,13 +134,7 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
   return result;
 }
 
-/**
- * `install <plugin>` — add a single new dependency to the target workspace's
- * `project.json`, then fold it into the lockfile.
- */
 async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promise<InstallResult> {
-  // At a root with workspaces, installing a single plugin without a target
-  // is ambiguous (same reasoning as `remove`).
   if (scope.context.atRoot && scope.context.workspaces.length > 0 && opts.workspace === undefined) {
     throw new Error(
       `install: at the workspace root — pass --workspace <name> to pick a target for "${opts.plugin}"`,
@@ -174,14 +153,12 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
   const resolveCtx = buildResolveContext(scope.context, { beta: opts.beta, force: opts.force });
   const resolved = await resolveDependency(identifier, resolveCtx);
 
-  // Write the long-form dependency entry into the target `project.json`.
   const depName = pickDepName(identifier);
   await writeDependencyToProject(target, depName, {
     source: stringifySource(resolved.source),
     version: resolved.source.version,
   });
 
-  // Merge into existing lockfile (add/replace one entry, keep the rest).
   const existingLock: Lockfile = readLock(scope.context.root.rootDir) ?? {
     version: 1,
     entries: {},
@@ -204,7 +181,6 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
   return result;
 }
 
-/** Produce a LockfileEntry from a resolver result + declaredBy list. */
 function toLockEntry(resolved: ResolvedDependency, declaredBy: string[]): LockfileEntry {
   return {
     source: resolved.source,
@@ -215,9 +191,9 @@ function toLockEntry(resolved: ResolvedDependency, declaredBy: string[]): Lockfi
 }
 
 /**
- * Choose the dependency key under which a CLI-parsed identifier lands in
- * `project.json`. We prefer a human-readable name (slug, artifactId, workspace
- * name, or file basename) over the full source string.
+ * Pick the human-readable dependency key for a CLI-parsed identifier —
+ * slug, artifactId, workspace name, or file basename. Prefer these over the
+ * raw source string so `project.json` stays legible.
  */
 function pickDepName(source: ReturnType<typeof parseIdentifier>): string {
   switch (source.kind) {
@@ -228,17 +204,12 @@ function pickDepName(source: ReturnType<typeof parseIdentifier>): string {
     case "workspace":
       return source.name;
     case "file": {
-      // Use the jar's basename minus `.jar` to produce a legible key.
       const base = source.path.replace(/\\/g, "/").split("/").pop() ?? source.path;
       return base.replace(/\.jar$/i, "") || source.path;
     }
   }
 }
 
-/**
- * Add (or replace) one dependency in a project's `project.json`. Rewrites the
- * file with 2-space-indented JSON and a trailing LF so diffs stay clean.
- */
 async function writeDependencyToProject(
   target: ScopeTarget,
   name: string,
@@ -303,6 +274,7 @@ function emitInstallResult(
   );
 }
 
+/** Factory for the `pluggy install` commander command. */
 export function installCommand(): Command {
   return new Command("install")
     .alias("i")

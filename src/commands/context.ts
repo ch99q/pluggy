@@ -1,13 +1,6 @@
 /**
- * Shared helpers for commands that operate on a workspace scope.
- *
- * `install` and `remove` need to turn global flags + cwd into:
- *   - a concrete list of target workspace nodes (or the root, for standalone
- *     projects), and
- *   - a ResolveContext for the resolver (merged registries, root dir).
- *
- * Keeping this shared avoids two copies of the scope-resolution rules drifting
- * apart. See docs/SPEC.md §2.4 / §2.5 for the scoping rules.
+ * Shared scope / ResolveContext helpers for `install` and `remove`.
+ * Scoping rules live in docs/SPEC.md §2.4 / §2.5.
  */
 
 import process from "node:process";
@@ -20,50 +13,36 @@ import type { WorkspaceContext } from "../workspace.ts";
 import { findWorkspace, resolveWorkspaceContext } from "../workspace.ts";
 
 export interface ScopeOptions {
-  /** Global `--project <path>` override (commander reads via optsWithGlobals). */
   cwd?: string;
-  /** Per-command `--workspace <name>` flag. */
   workspace?: string;
-  /** Per-command `--workspaces` flag (explicitly all). */
   workspaces?: boolean;
   /**
-   * When true, refuse to implicitly span all workspaces at a root. `remove`
-   * wants this — running at the root without an explicit flag is ambiguous.
-   * `install` sets this to false (at-root default is "all workspaces").
+   * Refuse to implicitly span all workspaces at a root. `remove` sets this —
+   * running at the root without an explicit flag is ambiguous. `install`
+   * leaves it false (at-root default is "all workspaces").
    */
   requireExplicitAtRoot?: boolean;
-  /** Command name, used in error messages ("install", "remove", ...). */
+  /** Command name interpolated into error messages. */
   commandName: string;
 }
 
-/**
- * A single target for a workspace-aware command. Either a concrete workspace
- * node, or the root project itself (standalone projects only).
- */
+/** One target for a workspace-aware command: a workspace node, or the root. */
 export interface ScopeTarget {
-  /** Human-readable name for logs / JSON output. */
   name: string;
-  /** The resolved project this target writes to. */
   project: ResolvedProject;
 }
 
 export interface ResolvedScope {
-  /** The full workspace context (root + all workspaces). */
   context: WorkspaceContext;
-  /** Every target the command should act on. At least one. */
   targets: ScopeTarget[];
-  /**
-   * True when the caller is acting across every workspace (either implicitly
-   * at a root, or with `--workspaces`). False for single-target commands.
-   */
+  /** True when acting across every workspace (implicit at-root or `--workspaces`). */
   spansAllWorkspaces: boolean;
 }
 
 /**
- * Resolve the workspace scope from cwd + per-command flags.
- *
- * Throws `InvalidArgumentError` for user-input problems (no project found,
- * unknown workspace name, ambiguous root scope).
+ * Resolve the workspace scope from cwd + per-command flags. Throws
+ * `InvalidArgumentError` for user-input problems (no project, unknown
+ * workspace name, ambiguous root scope).
  */
 export function resolveScope(opts: ScopeOptions): ResolvedScope {
   const cwd = opts.cwd ?? process.cwd();
@@ -74,7 +53,6 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     );
   }
 
-  // --workspace <name> wins over all other scoping — pick that single node.
   if (opts.workspace !== undefined) {
     if (context.workspaces.length === 0) {
       throw new InvalidArgumentError(
@@ -89,7 +67,6 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     };
   }
 
-  // --workspaces (plural): explicitly act on every workspace.
   if (opts.workspaces === true) {
     if (context.workspaces.length === 0) {
       throw new InvalidArgumentError(
@@ -103,7 +80,6 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     };
   }
 
-  // Inside a workspace → that workspace only.
   if (context.current !== undefined) {
     return {
       context,
@@ -112,9 +88,6 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     };
   }
 
-  // At the root. If workspaces exist, scoping rules split between commands:
-  //   - `remove` requires an explicit flag here (ambiguous otherwise).
-  //   - `install` defaults to "all workspaces".
   if (context.workspaces.length > 0) {
     if (opts.requireExplicitAtRoot === true) {
       throw new InvalidArgumentError(
@@ -128,7 +101,6 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
     };
   }
 
-  // Standalone project — single target = the root.
   return {
     context,
     targets: [{ name: context.root.name, project: context.root }],
@@ -137,11 +109,9 @@ export function resolveScope(opts: ScopeOptions): ResolvedScope {
 }
 
 /**
- * Build a ResolveContext suitable for passing to `resolveDependency`.
- *
- * Registries are read off the root (workspace merging happens there already);
- * `rootDir` is the root's directory, which is the base for `file:` paths and
- * the location of `pluggy.lock`.
+ * Build a `ResolveContext` for `resolveDependency`. Unions registries from
+ * the root and every workspace so the resolver sees every declared source,
+ * regardless of which workspace declared it.
  */
 export function buildResolveContext(
   context: WorkspaceContext,
@@ -149,10 +119,6 @@ export function buildResolveContext(
 ): ResolveContext {
   const registries: string[] = [];
   const seen = new Set<string>();
-  // Pull registries from both the root and every workspace. `workspace.ts`
-  // already merges root-into-workspace, but the root's own `registries` array
-  // isn't on any workspace node if there are no workspaces. Easier to union
-  // here than to reach across the boundary.
   const push = (entry: string | { url: string } | undefined): void => {
     if (entry === undefined) return;
     const url = typeof entry === "string" ? entry : entry.url;
@@ -175,9 +141,8 @@ export function buildResolveContext(
 }
 
 /**
- * Enumerate every declared dependency across a list of targets.
- * Returns one entry per `(targetName, depName)` pair so install can track
- * `declaredBy` correctly.
+ * Enumerate every declared dependency across a list of targets. Returns one
+ * entry per `(targetName, depName)` pair so callers can build `declaredBy`.
  */
 export function collectDeclared(targets: ScopeTarget[]): Array<{
   declaredBy: string;
@@ -201,10 +166,9 @@ export function collectDeclared(targets: ScopeTarget[]): Array<{
 }
 
 /**
- * Canonicalize a `DependencyValue` (either sugar string or long form) into a
- * `(source, version)` pair matching `project.json`'s long-form grammar.
- *
- * Short form (`"foo": "1.2.3"`) is sugar for `modrinth:<name>` — §1.4.
+ * Canonicalize a `DependencyValue` — sugar string or long form — into a
+ * `(source, version)` pair. Sugar `"foo": "1.2.3"` means `modrinth:<name>`
+ * (§1.4).
  */
 export function canonicalizeDeclared(
   name: string,

@@ -1,11 +1,8 @@
 import type { DescriptorSpec } from "../platform.ts";
 
 /**
- * BungeeCord-family descriptor (waterfall, travertine).
- * Written to `bungee.yml` at the jar root.
- *
- * BungeeCord uses a singular `author` string; multiple authors are joined with
- * ", " for compatibility with the upstream format.
+ * BungeeCord-family descriptor (waterfall, travertine) → `bungee.yml`.
+ * Uses a singular `author` field; multiple authors are joined with ", ".
  */
 export const bungeeDescriptor: DescriptorSpec = {
   path: "bungee.yml",

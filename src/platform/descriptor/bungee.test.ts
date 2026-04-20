@@ -1,8 +1,6 @@
 /**
- * Contract tests for the BungeeCord-family descriptor generator.
- *
- * BungeeCord (waterfall, travertine) uses the same YAML flavor as Bukkit but
- * with a singular `author` string field instead of a list.
+ * Contract tests for the BungeeCord-family descriptor generator. Shares
+ * Bukkit's YAML flavor but emits a singular `author` string, not a list.
  */
 
 import { describe, expect, test } from "vite-plus/test";
@@ -84,8 +82,7 @@ describe("bungeeDescriptor.generate", () => {
     expect(output.split("\r\n").length).toBe(1);
   });
 
-  test("author string containing a comma (joined multi-author) gets quoted because of the colon-free payload", () => {
-    // "Alice, Bob" -- no colon, no reserved chars, so should emit bare.
+  test("joined multi-author strings emit bare (no reserved chars, no colon)", () => {
     const output = bungeeDescriptor.generate(project({ authors: ["Alice", "Bob"] }));
     expect(output).toContain("author: Alice, Bob\n");
   });

@@ -17,7 +17,9 @@ import { parsePlatform, parseSemver } from "./parsers.ts";
 
 /**
  * Scaffold a new project at `distDir` from the given `Project` config.
+ *
  * Writes `project.json`, `src/config.yml`, and `src/<package>/<Class>.java`.
+ * Throws if `project.main` is unset or any of the writes fail.
  */
 export async function generateProject(distDir: string, project: Project): Promise<void> {
   const main = project.main;
@@ -63,6 +65,7 @@ export async function generateProject(distDir: string, project: Project): Promis
   }
 }
 
+/** Factory for the `pluggy init` commander command. */
 export function initCommand(): Command {
   return new Command("init")
     .description(

@@ -1,13 +1,7 @@
 /**
- * Shading — selectively copy classes/resources from dependency jars into the
- * staging directory per the project's `shading` rules.
- *
- * A dep without a rule is NOT shaded (§1.6). For deps with a rule, each
- * entry in the jar is matched against the include globs; an entry that
- * matches at least one include AND no exclude is copied into the staging
- * directory at the same relative path.
- *
- * Uses `yauzl` for streaming zip reads.
+ * Shading — selectively copy entries from dependency jars into the staging
+ * directory per the project's `shading` rules. A dep without a rule is not
+ * shaded (§1.6).
  */
 
 import { existsSync } from "node:fs";
@@ -22,12 +16,9 @@ import type { ResolvedDependency } from "../resolver/index.ts";
 import { PENDING_BUILD_INTEGRITY } from "../resolver/workspace.ts";
 
 /**
- * Look up the dependency name as declared in `project.json:dependencies`.
- * The shading map is keyed by these names, which are:
- *   - the `source.slug` for modrinth
- *   - the `source.artifactId` for maven
- *   - basename-without-`.jar` for file
- *   - `source.name` for workspace
+ * The dep's name as declared in `project.json` — the key the `shading` map
+ * is indexed by. Slug for modrinth, artifactId for maven, basename without
+ * `.jar` for file, name for workspace.
  */
 function depName(dep: ResolvedDependency): string {
   switch (dep.source.kind) {
@@ -45,6 +36,11 @@ function depName(dep: ResolvedDependency): string {
   }
 }
 
+/**
+ * Apply every matching shading rule across `deps`, writing selected entries
+ * into `stagingDir`. An entry is copied iff it matches at least one include
+ * pattern and no exclude pattern.
+ */
 export async function applyShading(
   deps: ResolvedDependency[],
   rules: Record<string, Shading>,
@@ -53,7 +49,7 @@ export async function applyShading(
   for (const dep of deps) {
     const name = depName(dep);
     const rule = rules[name];
-    if (rule === undefined) continue; // not shaded → skip (default)
+    if (rule === undefined) continue;
 
     if (dep.integrity === PENDING_BUILD_INTEGRITY) {
       if (!existsSync(dep.jarPath)) {
@@ -83,9 +79,8 @@ async function shadeDependency(
   const excludes = rule.exclude ?? [];
 
   await new Promise<void>((resolvePromise, rejectPromise) => {
-    // autoClose: false so we can extract selected entries after the `end`
-    // event; with the default (true), yauzl closes the file descriptor as
-    // soon as `end` fires, which races with any openReadStream we queue.
+    // autoClose:false — with the default, yauzl closes the FD on `end`,
+    // which races against openReadStream calls we queue from the entry loop.
     yauzl.open(jarPath, { lazyEntries: true, autoClose: false }, (err, zip) => {
       if (err !== null || zip === undefined) {
         rejectPromise(
@@ -114,9 +109,6 @@ async function shadeDependency(
 
       zip.on("entry", (entry: Entry) => {
         if (errored) return;
-        // Directories end with "/" in zip entry names. Skip them; we only
-        // copy regular files, and the destination directories are created
-        // at write time.
         if (entry.fileName.endsWith("/")) {
           zip.readEntry();
           return;
@@ -183,16 +175,9 @@ function extractEntry(
 }
 
 /**
- * Return true iff `path` matches any of the `patterns`.
- *
- * Pattern syntax:
- *   - `*`  matches any sequence of characters within a single path segment
- *   - `**` matches any depth, including zero segments
- *   - all other characters match literally
- *
- * Path separators are always `/` (zip entry names use forward slashes).
- * Patterns are rooted at the entry-name root — a leading `/` on either side
- * is normalized away.
+ * Match `path` against any of `patterns`. `*` matches one path segment,
+ * `**` matches any depth (including zero segments). Leading `/` on either
+ * side is normalized away.
  */
 export function matches(path: string, patterns: string[]): boolean {
   if (patterns.length === 0) return false;
@@ -205,26 +190,18 @@ export function matches(path: string, patterns: string[]): boolean {
 }
 
 function matchGlob(path: string, pattern: string): boolean {
-  // Convert glob to a regex. Process `**` first so it doesn't collide with `*`.
-  // Tokens:
-  //   `**/` -> "(?:.*?/)?"   (zero or more path segments)
-  //   `/**` at end -> "(?:/.*)?"
-  //   `**` alone -> ".*"
-  //   `*` -> "[^/]*"
-  //   `?` -> "[^/]"
-  //   everything else -> escaped literal
+  // `**/` → `(?:.*?/)?`, `**` alone → `.*`, `*` → `[^/]*`, `?` → `[^/]`.
+  // Process `**` first so it doesn't collide with `*`.
   let re = "";
   let i = 0;
   while (i < pattern.length) {
     const ch = pattern[i];
     if (ch === "*" && pattern[i + 1] === "*") {
-      // Handle `**` constructs.
       if (pattern[i + 2] === "/") {
         re += "(?:.*?/)?";
         i += 3;
         continue;
       }
-      // `**` at end (or in the middle without the following slash)
       re += ".*";
       i += 2;
       continue;
@@ -239,7 +216,6 @@ function matchGlob(path: string, pattern: string): boolean {
       i += 1;
       continue;
     }
-    // Escape regex metacharacters.
     if (/[.+^${}()|[\]\\]/.test(ch)) {
       re += `\\${ch}`;
     } else {

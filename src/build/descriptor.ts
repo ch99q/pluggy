@@ -3,14 +3,11 @@ import type { DescriptorSpec } from "../platform/platform.ts";
 import type { ResolvedProject } from "../project.ts";
 
 /**
- * Pick the descriptor spec for the project's primary platform, verifying
- * that all declared platforms share the same descriptor family. Rejects
- * cross-family compatibility arrays (see docs/SPEC.md §5.2).
+ * Pick the descriptor spec for the project's primary platform and verify
+ * that all declared platforms share the same descriptor family (§5.2).
  *
- * Two platforms are "in the same family" iff their `descriptor.path` matches
- * (`plugin.yml`, `bungee.yml`, `velocity-plugin.json`). A declared
- * `compatibility.platforms` array spanning families is a user error and must
- * be split into separate workspaces — this function throws with that guidance.
+ * A family is keyed by `descriptor.path` — cross-family `compatibility.platforms`
+ * arrays throw with guidance to split into separate workspaces.
  */
 export function pickDescriptor(project: ResolvedProject): DescriptorSpec {
   const platforms = project.compatibility?.platforms;
@@ -30,7 +27,6 @@ export function pickDescriptor(project: ResolvedProject): DescriptorSpec {
     );
   }
 
-  // Peek each additional platform to verify descriptor family match.
   for (let i = 1; i < platforms.length; i++) {
     const id = platforms[i];
     let other;
