@@ -683,11 +683,22 @@ The file is written with pluggy defaults first (`motd=<project.name> dev`, `onli
 - Targets one project at a time — `--workspaces` (plural) is **not** accepted; the dev loop doesn't make sense across multiple workspaces simultaneously.
 - Hot-code-swap (class-level JVM reload) is out of scope. Plugin restart is the unit of change.
 
-### 2.12 `upgrade` — self-update ✅ (simplified)
+### 2.12 `upgrade` — self-update ✅
 
-No flags. Fetches latest GitHub release tag and prints re-install instructions (Unix + Windows).
+| Flag           | Purpose                                                                            |
+| -------------- | ---------------------------------------------------------------------------------- |
+| `--print-only` | Skip the download; just print the latest release info and manual install commands. |
 
-In-place binary replacement was dropped during the Vite+/Bun migration and is not planned to return by default. A future `--auto` flag could opt into it.
+Default behaviour: fetches the latest GitHub release, downloads the asset matching the current platform (darwin-arm64, darwin-x64, linux-arm64, linux-x64, win32-x64), and atomically replaces the running binary.
+
+Replacement is crash-safe:
+
+1. Download to a temp file, `chmod +x` on Unix.
+2. Rename the current binary to `<current>.old`.
+3. Rename the new binary into `<current>`.
+4. On step 3 failure, restore `<current>.old` so the user is never left without a working `pluggy`.
+
+Platforms without a published asset (e.g. linux-arm64 without a build yet) fall back to the same output as `--print-only`.
 
 ### 2.13 `completions <shell>` — ✅ implemented
 
