@@ -1,14 +1,24 @@
 import { InvalidArgumentError } from "commander";
 
 import { getRegisteredPlatforms } from "../platform/mod.ts";
+import { parseIdentifier } from "../source.ts";
 
-export function parseVersion(value: string): string {
-  if (/^\d+\.\d+\.\d+?$/.test(value)) return value;
-  if (/^.+\.jar$/.test(value)) return value;
-  if (/^maven:[\w.-]+:[\w.-]+@.+$/.test(value)) return value;
-  throw new InvalidArgumentError(
-    `Invalid version format: ${value} - expected semver, file jar, or maven format`,
-  );
+/**
+ * Commander argParser that validates a CLI plugin identifier — the full
+ * grammar from §6.2 (`<slug>[@<version>]`, `<path>.jar`, `maven:g:a@v`,
+ * `workspace:<name>`). Returns the input string untouched; downstream code
+ * calls `parseIdentifier` again to get the tagged union.
+ *
+ * Commander wants a string back from argParsers (otherwise the typed value
+ * replaces the raw input in help text, etc.), so we validate then pass through.
+ */
+export function parseIdentifierArg(value: string): string {
+  try {
+    parseIdentifier(value);
+  } catch (err) {
+    throw new InvalidArgumentError((err as Error).message);
+  }
+  return value;
 }
 
 export function parseSemver(value: string): string {

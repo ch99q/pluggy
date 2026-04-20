@@ -1,5 +1,12 @@
+import process from "node:process";
+
 import { expect, test } from "vite-plus/test";
+
 import { getPlatform } from "../mod.ts";
+
+// `bukkit.download` runs BuildTools against a real Spigot checkout — slow and
+// Java-dependent. Gated behind PLUGGY_INTEGRATION=1.
+const integration = process.env.PLUGGY_INTEGRATION === "1";
 
 test("bukkit platform exists", () => {
   expect(getPlatform("bukkit").id).toBe("bukkit");
@@ -18,7 +25,7 @@ test("bukkit platform versions", async () => {
   expect(latest.version).toBe(versions[0]);
 });
 
-test("bukkit platform download latest version", async () => {
+test.runIf(integration)("bukkit platform download latest version", async () => {
   const bukkit = getPlatform("bukkit");
   const latestVersion = await bukkit.getLatestVersion();
   const result = await bukkit.download(latestVersion, true);

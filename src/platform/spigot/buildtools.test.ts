@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { expect, test } from "vite-plus/test";
@@ -9,6 +10,12 @@ import { compile, download, versions } from "../spigot/buildtools.ts";
 import type { PlatformContext } from "../platform.ts";
 
 const here = dirname(fileURLToPath(import.meta.url));
+
+// The compile test actually runs `java -jar BuildTools.jar` against a live
+// Spigot checkout; it takes minutes and needs Java 8-21 on PATH. Gated behind
+// PLUGGY_INTEGRATION=1 so the default `vp test` run stays under a couple of
+// minutes.
+const integration = process.env.PLUGGY_INTEGRATION === "1";
 
 test("BuildTools download", async () => {
   const ctx: PlatformContext = {
@@ -33,7 +40,7 @@ test("BuildTools versions", async () => {
   expect(versionsList[0].length).toBeGreaterThan(0);
 });
 
-test("BuildTools compile", async () => {
+test.runIf(integration)("BuildTools compile", async () => {
   const ctx: PlatformContext = {
     getCachePath: () => join(here, ".buildtools"),
   };

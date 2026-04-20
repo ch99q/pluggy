@@ -9,7 +9,7 @@ import { bold, dim, log } from "../logging.ts";
 import { parseIdentifier, type ResolvedSource } from "../source.ts";
 import { resolveWorkspaceContext } from "../workspace.ts";
 
-import { parseVersion } from "./parsers.ts";
+import { parseIdentifierArg } from "./parsers.ts";
 
 const MODRINTH_API = "https://api.modrinth.com/v2";
 
@@ -258,7 +258,7 @@ export function infoCommand(): Command {
   return new Command("info")
     .alias("show")
     .description("Show information about a plugin, including available versions and compatibility.")
-    .argument("<plugin>", "Plugin identifier.", parseVersion)
+    .argument("<plugin>", "Plugin identifier.", parseIdentifierArg)
     .action(async function action(this: Command, plugin: string) {
       const globalOpts = this.optsWithGlobals();
       await doInfo(plugin, { json: globalOpts.json, project: globalOpts.project });

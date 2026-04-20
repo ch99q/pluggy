@@ -1,5 +1,12 @@
+import process from "node:process";
+
 import { expect, test } from "vite-plus/test";
+
 import { getPlatform } from "../mod.ts";
+
+// `spigot.download` runs BuildTools against a real Spigot checkout — slow and
+// Java-dependent. Gated behind PLUGGY_INTEGRATION=1.
+const integration = process.env.PLUGGY_INTEGRATION === "1";
 
 test("spigot platform exists", () => {
   expect(getPlatform("spigot").id).toBe("spigot");
@@ -18,7 +25,7 @@ test("spigot platform versions", async () => {
   expect(latest.version).toBe(versions[0]);
 });
 
-test("spigot platform download latest version", async () => {
+test.runIf(integration)("spigot platform download latest version", async () => {
   const spigot = getPlatform("spigot");
   const latestVersion = await spigot.getLatestVersion();
   const result = await spigot.download(latestVersion, true);
