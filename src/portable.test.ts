@@ -1,15 +1,25 @@
 /**
  * Contract tests for src/portable.ts.
  *
- * See docs/SPEC.md §3.8. `describe.skip` keeps these dormant while the
- * module is stubbed — remove the `.skip` when implementing.
+ * See docs/SPEC.md §3.8.
  */
 
-import { describe, expect, test } from "vite-plus/test";
+import { spawn } from "node:child_process";
+import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, resolve, sep } from "node:path";
 
-import { toPosixPath } from "./portable.ts";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/test";
 
-describe.skip("toPosixPath", () => {
+import {
+  installShutdownHandler,
+  linkOrCopy,
+  resolveRelativeToConfig,
+  toPosixPath,
+  writeFileLF,
+} from "./portable.ts";
+
+describe("toPosixPath", () => {
   test("passes forward-slash input through unchanged", () => {
     expect(toPosixPath("a/b/c")).toBe("a/b/c");
     expect(toPosixPath("./libs/foo.jar")).toBe("./libs/foo.jar");
@@ -29,6 +39,269 @@ describe.skip("toPosixPath", () => {
   });
 });
 
-// linkOrCopy, resolveRelativeToConfig, installShutdownHandler, writeFileLF
-// have filesystem / process dependencies — contract tests live with the
-// implementation PRs.
+describe("linkOrCopy", () => {
+  let workDir: string;
+
+  beforeEach(async () => {
+    workDir = await mkdtemp(join(tmpdir(), "pluggy-portable-link-"));
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  test("happy path: destination has the same bytes as source", async () => {
+    const source = join(workDir, "src.bin");
+    const destination = join(workDir, "dst.bin");
+    const payload = Buffer.from("pluggy-linkOrCopy-happy-path");
+    await writeFile(source, payload);
+
+    await linkOrCopy(source, destination);
+
+    const read = await readFile(destination);
+    expect(read.equals(payload)).toBe(true);
+  });
+
+  test("overwrites an existing destination (EEXIST handling)", async () => {
+    const source = join(workDir, "src.bin");
+    const destination = join(workDir, "dst.bin");
+    await writeFile(source, "new-bytes");
+    await writeFile(destination, "old-bytes");
+
+    await linkOrCopy(source, destination);
+
+    const read = await readFile(destination, "utf8");
+    expect(read).toBe("new-bytes");
+  });
+
+  test("falls back to copyFile when link throws EXDEV", async () => {
+    const source = join(workDir, "src.bin");
+    const destination = join(workDir, "dst.bin");
+    const payload = "cross-volume-fallback";
+    await writeFile(source, payload);
+
+    // ESM export bindings aren't configurable, so vi.spyOn on node:fs/promises
+    // named exports fails. Use vi.doMock + dynamic re-import to stub `link`
+    // with an EXDEV error while leaving `copyFile` real.
+    vi.resetModules();
+    const copySpy = vi.fn<(src: string, dst: string) => Promise<void>>(async (src, dst) => {
+      // Use the synchronous fs.copyFileSync to keep the fallback real and
+      // independent of the promise-module mock we're about to install.
+      const fsSync = await import("node:fs");
+      fsSync.copyFileSync(src, dst);
+    });
+    const linkSpy = vi.fn(async () => {
+      throw Object.assign(new Error("EXDEV: cross-device link not permitted"), {
+        code: "EXDEV",
+      });
+    });
+
+    vi.doMock("node:fs/promises", async () => {
+      const actual = await vi.importActual<typeof import("node:fs/promises")>("node:fs/promises");
+      return {
+        ...actual,
+        default: actual,
+        link: linkSpy,
+        copyFile: copySpy,
+      };
+    });
+
+    try {
+      const mod = await import("./portable.ts");
+      await mod.linkOrCopy(source, destination);
+
+      expect(linkSpy).toHaveBeenCalledTimes(1);
+      expect(copySpy).toHaveBeenCalledTimes(1);
+      const read = await readFile(destination, "utf8");
+      expect(read).toBe(payload);
+
+      // Confirm the destination is an independent file (not a hardlink).
+      const srcStat = await stat(source);
+      const dstStat = await stat(destination);
+      expect(dstStat.nlink).toBe(1);
+      expect(srcStat.nlink).toBe(1);
+    } finally {
+      vi.doUnmock("node:fs/promises");
+      vi.resetModules();
+    }
+  });
+});
+
+describe("resolveRelativeToConfig", () => {
+  const configFile = resolve("/tmp/project/project.json");
+
+  test("resolves forward-slash relative input against the config dir", () => {
+    const result = resolveRelativeToConfig(configFile, "./libs/foo.jar");
+    expect(result).toBe(resolve("/tmp/project/libs/foo.jar"));
+  });
+
+  test("resolves backslash relative input against the config dir", () => {
+    const result = resolveRelativeToConfig(configFile, ".\\libs\\foo.jar");
+    expect(result).toBe(resolve("/tmp/project/libs/foo.jar"));
+  });
+
+  test("passes absolute input through (still OS-native)", () => {
+    const abs = resolve("/tmp/other/lib.jar");
+    const result = resolveRelativeToConfig(configFile, abs);
+    expect(result).toBe(abs);
+    expect(isAbsolute(result)).toBe(true);
+  });
+
+  test("returns an absolute path using OS separators", () => {
+    const result = resolveRelativeToConfig(configFile, "libs/foo.jar");
+    expect(isAbsolute(result)).toBe(true);
+    // Native separator — forward slash on posix, backslash on win32.
+    expect(result.includes(sep)).toBe(true);
+  });
+});
+
+describe("writeFileLF", () => {
+  let workDir: string;
+
+  beforeEach(async () => {
+    workDir = await mkdtemp(join(tmpdir(), "pluggy-portable-lf-"));
+  });
+
+  afterEach(async () => {
+    await rm(workDir, { recursive: true, force: true });
+  });
+
+  test("writes LF input as LF", async () => {
+    const target = join(workDir, "out.txt");
+    await writeFileLF(target, "one\ntwo\nthree\n");
+
+    const raw = await readFile(target);
+    expect(raw.includes(Buffer.from("\r\n"))).toBe(false);
+    expect(raw.toString("utf8")).toBe("one\ntwo\nthree\n");
+  });
+
+  test("converts CRLF to LF on write", async () => {
+    const target = join(workDir, "crlf.txt");
+    await writeFileLF(target, "one\r\ntwo\r\nthree\r\n");
+
+    const raw = await readFile(target);
+    expect(raw.includes(Buffer.from("\r\n"))).toBe(false);
+    expect(raw.toString("utf8")).toBe("one\ntwo\nthree\n");
+  });
+
+  test("round-trips cleanly via readFile", async () => {
+    const target = join(workDir, "rt.txt");
+    const contents = "alpha\nbeta\ngamma\n";
+    await writeFileLF(target, contents);
+
+    const read = await readFile(target, "utf8");
+    expect(read).toBe(contents);
+  });
+});
+
+describe("installShutdownHandler", () => {
+  // Keep disposers so afterEach can always remove the SIGINT listener even if
+  // a test fails before its own cleanup runs.
+  const disposers: Array<() => void> = [];
+  const spawnedChildren: Array<ReturnType<typeof spawn>> = [];
+
+  afterEach(() => {
+    while (disposers.length > 0) {
+      const dispose = disposers.pop();
+      try {
+        dispose?.();
+      } catch {
+        // ignore
+      }
+    }
+    for (const child of spawnedChildren) {
+      if (child.exitCode === null && child.signalCode === null) {
+        try {
+          child.kill("SIGKILL");
+        } catch {
+          // already dead
+        }
+      }
+    }
+    spawnedChildren.length = 0;
+  });
+
+  test("first Ctrl+C writes gracefulStdin and the child exits cleanly", async () => {
+    // Child reads stdin; exits with code 0 when it sees "STOP".
+    const child = spawn(
+      process.execPath,
+      [
+        "-e",
+        "process.stdin.on('data', d => { if (d.toString().includes('STOP')) process.exit(0); });",
+      ],
+      { stdio: ["pipe", "pipe", "pipe"] },
+    );
+    spawnedChildren.push(child);
+
+    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+      (resolvePromise) => {
+        child.once("exit", (code, signal) => {
+          resolvePromise({ code, signal });
+        });
+      },
+    );
+
+    const dispose = installShutdownHandler(child, {
+      gracefulStdin: "STOP\n",
+      graceMs: 2000,
+      forceKillWindowMs: 2000,
+    });
+    disposers.push(dispose);
+
+    // Give the child a tick to attach its stdin listener.
+    await new Promise((r) => setTimeout(r, 100));
+
+    process.emit("SIGINT");
+
+    const result = await exited;
+    expect(result.code).toBe(0);
+    expect(result.signal).toBeNull();
+
+    dispose();
+    disposers.pop();
+  });
+
+  test("child that ignores stdin is killed after graceMs elapses", async () => {
+    // Child does nothing with stdin; only exits when killed.
+    const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000);"], {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    spawnedChildren.push(child);
+
+    const exited = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(
+      (resolvePromise) => {
+        child.once("exit", (code, signal) => {
+          resolvePromise({ code, signal });
+        });
+      },
+    );
+
+    const dispose = installShutdownHandler(child, {
+      gracefulStdin: "STOP\n",
+      graceMs: 300,
+      forceKillWindowMs: 2000,
+    });
+    disposers.push(dispose);
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    const start = Date.now();
+    process.emit("SIGINT");
+
+    const result = await exited;
+    const elapsed = Date.now() - start;
+
+    // The child should not have exited with code 0 — it was killed.
+    // On Unix this surfaces as signal="SIGTERM"; on Windows Node sets
+    // code=1/exitCode varies and signal may be null — accept either
+    // channel as evidence that kill() fired.
+    const wasKilled = result.signal !== null || result.code !== 0;
+    expect(wasKilled).toBe(true);
+    // Should be at least graceMs but not too much more (sanity bound).
+    expect(elapsed).toBeGreaterThanOrEqual(250);
+
+    dispose();
+    disposers.pop();
+  });
+});
