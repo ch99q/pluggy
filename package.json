@@ -28,10 +28,14 @@
   "dependencies": {
     "@inquirer/prompts": "^8.0.0",
     "commander": "^14.0.0",
-    "picocolors": "^1.1.1"
+    "picocolors": "^1.1.1",
+    "yauzl": "^3.3.0",
+    "yazl": "^3.3.1"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "@types/yauzl": "^2.10.3",
+    "@types/yazl": "^3.3.1",
     "@typescript/native-preview": "7.0.0-dev.20260328.1",
     "typescript": "^6.0.2",
     "vite-plus": "^0.1.14"

@@ -15,6 +15,7 @@ libs/
 .cache/
 .vite/
 .buildtools/
+.pluggy-build/
 
 # IDE files
 .vscode/

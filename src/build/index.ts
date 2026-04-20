@@ -2,9 +2,31 @@
  * Build pipeline — compile → resources → descriptor → shade → jar.
  *
  * See docs/SPEC.md §2.9 for the full pipeline description.
+ *
+ * Workspace orchestration (topological multi-project builds) is not handled
+ * here — the caller is responsible. `buildProject` handles exactly one
+ * workspace at a time.
  */
 
+import { createHash } from "node:crypto";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { dirname, join, posix, relative } from "node:path";
+
+import yazl from "yazl";
+
+import { log } from "../logging.ts";
+import { getPlatform } from "../platform/mod.ts";
+import { writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
+import { parseSource } from "../source.ts";
+import { resolveDependency, type ResolvedDependency } from "../resolver/index.ts";
+import { resolveMaven } from "../resolver/maven.ts";
+
+import { compileJava } from "./compile.ts";
+import { pickDescriptor } from "./descriptor.ts";
+import { stageResources } from "./resources.ts";
+import { applyShading } from "./shade.ts";
 
 export interface BuildOptions {
   /** Output jar path. Default: `./bin/<name>-<version>.jar` in the workspace. */
@@ -21,6 +43,219 @@ export interface BuildResult {
   durationMs: number;
 }
 
-export function buildProject(_project: ResolvedProject, _opts: BuildOptions): Promise<BuildResult> {
-  throw new Error("not implemented: buildProject");
+const STAGING_ROOT = ".pluggy-build";
+
+export async function buildProject(
+  project: ResolvedProject,
+  opts: BuildOptions,
+): Promise<BuildResult> {
+  const started = Date.now();
+
+  // 1. Resolve the descriptor — fail fast on cross-family.
+  const descriptor = pickDescriptor(project);
+
+  // 2. Determine output path.
+  const outputPath =
+    opts.output ?? join(project.rootDir, "bin", `${project.name}-${project.version}.jar`);
+
+  // 3/4. Staging dir. Short-id derived from (name + version + rootDir) so repeat
+  // builds of the same workspace reuse the same path (and `--clean` reliably
+  // nukes it). Distinct workspaces never collide.
+  const stagingId = createHash("sha256")
+    .update(`${project.name}\0${project.version}\0${project.rootDir}`)
+    .digest("hex")
+    .slice(0, 12);
+  const stagingDir = join(project.rootDir, STAGING_ROOT, stagingId);
+
+  if (opts.clean) {
+    await rm(stagingDir, { recursive: true, force: true });
+  }
+  await mkdir(stagingDir, { recursive: true });
+
+  // 5. Resolve dependencies.
+  const registries = collectRegistries(project);
+  const resolvedDeps = await resolveDeclaredDependencies(project, registries);
+
+  // Platform API jars for the compiler classpath. primary version drives the
+  // Maven API coordinate lookup.
+  const platformApiJars = await resolvePlatformApiJars(project, registries);
+
+  const classpath = [...resolvedDeps.map((d) => d.jarPath), ...platformApiJars];
+
+  // 6. Stage resources (may include the user's own descriptor).
+  await stageResources(project, stagingDir);
+
+  // 7. Auto-generate the primary descriptor, unless the user supplied it via
+  //    `resources` (in which case stageResources wrote it already).
+  const descriptorRelPath = descriptor.path;
+  const userSuppliedDescriptor = hasUserDescriptor(project, descriptorRelPath);
+  if (!userSuppliedDescriptor) {
+    const rendered = descriptor.generate(project);
+    const destination = join(stagingDir, descriptorRelPath);
+    await mkdir(dirname(destination), { recursive: true });
+    await writeFileLF(destination, rendered);
+  }
+
+  // 8. Compile sources.
+  await compileJava(project, {
+    sourceDir: join(project.rootDir, "src"),
+    outputDir: stagingDir,
+    classpath,
+  });
+
+  // 9. Shading — overlay matching classes from deps into staging.
+  await applyShading(resolvedDeps, project.shading ?? {}, stagingDir);
+
+  // 10. Zip staging into the output jar.
+  await mkdir(dirname(outputPath), { recursive: true });
+  await zipDirectory(stagingDir, outputPath);
+
+  const info = await stat(outputPath);
+
+  log.debug(`build: wrote ${outputPath} (${info.size} bytes)`);
+
+  return {
+    outputPath,
+    sizeBytes: info.size,
+    durationMs: Date.now() - started,
+  };
+}
+
+function hasUserDescriptor(project: ResolvedProject, descriptorPath: string): boolean {
+  const resources = project.resources;
+  if (resources === undefined || resources === null) return false;
+  // The user may declare the descriptor by its exact path key (e.g. "plugin.yml").
+  return Object.prototype.hasOwnProperty.call(resources, descriptorPath);
+}
+
+function collectRegistries(project: ResolvedProject): string[] {
+  const out: string[] = [];
+  for (const entry of project.registries ?? []) {
+    out.push(typeof entry === "string" ? entry : entry.url);
+  }
+  return out;
+}
+
+async function resolveDeclaredDependencies(
+  project: ResolvedProject,
+  registries: string[],
+): Promise<ResolvedDependency[]> {
+  const deps = project.dependencies;
+  if (deps === undefined || deps === null) return [];
+
+  const results: ResolvedDependency[] = [];
+  for (const [name, raw] of Object.entries(deps)) {
+    const { source, version } =
+      typeof raw === "string"
+        ? { source: `modrinth:${name}`, version: raw }
+        : { source: raw.source, version: raw.version };
+    const parsed = parseSource(source, version);
+    const resolved = await resolveDependency(parsed, {
+      rootDir: project.rootDir,
+      includePrerelease: false,
+      force: false,
+      registries,
+    });
+    results.push(resolved);
+  }
+  return results;
+}
+
+async function resolvePlatformApiJars(
+  project: ResolvedProject,
+  projectRegistries: string[],
+): Promise<string[]> {
+  const platforms = project.compatibility?.platforms ?? [];
+  const versions = project.compatibility?.versions ?? [];
+  if (platforms.length === 0 || versions.length === 0) return [];
+
+  const primaryId = platforms[0];
+  const primaryVersion = versions[0];
+
+  let primary;
+  try {
+    primary = getPlatform(primaryId);
+  } catch {
+    // pickDescriptor already surfaced this; keep this branch quiet.
+    return [];
+  }
+
+  const apiSpec = await primary.api(primaryVersion);
+  if (apiSpec.dependencies.length === 0) return [];
+
+  // Prefer the platform's own repos; fall back to project registries so user
+  // overrides still work. Dedup while preserving order.
+  const registries = uniqueInOrder([...apiSpec.repositories, ...projectRegistries]);
+
+  const jars: string[] = [];
+  for (const coord of apiSpec.dependencies) {
+    const resolved = await resolveMaven(coord.groupId, coord.artifactId, coord.version, {
+      rootDir: project.rootDir,
+      includePrerelease: false,
+      force: false,
+      registries,
+    });
+    jars.push(resolved.jarPath);
+  }
+  return jars;
+}
+
+function uniqueInOrder(values: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const v of values) {
+    if (seen.has(v)) continue;
+    seen.add(v);
+    out.push(v);
+  }
+  return out;
+}
+
+async function zipDirectory(sourceDir: string, destPath: string): Promise<void> {
+  const files = await collectFiles(sourceDir);
+  files.sort((a, b) => a.localeCompare(b));
+
+  return await new Promise<void>((resolvePromise, rejectPromise) => {
+    const zip = new yazl.ZipFile();
+
+    // Pipe before queuing entries — yazl is a streaming writer.
+    const ws = createWriteStream(destPath);
+    ws.once("error", rejectPromise);
+    ws.once("close", () => resolvePromise());
+    zip.outputStream.pipe(ws);
+
+    for (const abs of files) {
+      const rel = toPosix(relative(sourceDir, abs));
+      zip.addReadStreamLazy(rel, (cb) => {
+        try {
+          cb(null, createReadStream(abs));
+        } catch (e) {
+          cb(e as Error, null as unknown as NodeJS.ReadableStream);
+        }
+      });
+    }
+
+    zip.end();
+  });
+}
+
+async function collectFiles(dir: string): Promise<string[]> {
+  const out: string[] = [];
+  async function walk(current: string): Promise<void> {
+    const entries = await readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) {
+        await walk(full);
+      } else if (entry.isFile()) {
+        out.push(full);
+      }
+    }
+  }
+  await walk(dir);
+  return out;
+}
+
+function toPosix(p: string): string {
+  return p.split(/[/\\]/).filter(Boolean).join(posix.sep);
 }
