@@ -36,42 +36,6 @@ See `conventions/` for the full conventions with examples in both TypeScript and
 - **`conventions/QUALITY.md`** -API design: verb+noun entry points, category objects, single call backbone, no global state, fail-early errors.
 - **`conventions/PERFORMANCE.md`** -Performance: data structure selection, bounded collections, early exits, signal over polling, hot-path allocations, batching, coordination.
 
-## Repository structure
-
-pluggy is a Minecraft plugin CLI. The source tree is TypeScript, organized around a [commander](https://github.com/tj/commander.js) command tree and a pluggable platform registry.
-
-```
-src/
-├── mod.ts               # CLI entrypoint; thin dispatcher over commands/
-├── commands/            # one file per subcommand, each exports an XxxCommand() factory
-│   ├── init.ts          # ✅ implemented
-│   ├── install.ts, remove.ts, info.ts, search.ts, list.ts,
-│   ├── build.ts, doctor.ts, dev.ts     # ⚠️ stubs (throw "not implemented")
-│   ├── upgrade.ts       # ✅ simplified (fetch latest release, print install instructions)
-│   └── parsers.ts       # commander argParser functions (semver, version, platform, integer)
-├── platform/            # platform registry + providers
-│   ├── platform.ts      # PlatformProvider interface + createPlatform registry
-│   ├── mod.ts           # imports each provider for side-effect registration
-│   ├── descriptor/      # per-family descriptor specs (bukkit.ts, bungee.ts, velocity.ts)
-│   ├── spigot/          # Spigot, Bukkit, BuildTools
-│   └── papermc/         # Paper, Folia, Velocity, Waterfall, Travertine
-├── resolver/            # ⚠️ stub — dep resolution per source kind (modrinth, maven, file, workspace)
-├── build/               # ⚠️ stub — compile → resources → descriptor → shade → jar
-├── dev/                 # ⚠️ stub — dev-server runtime (stage, spawn, watch, plugins)
-├── source.ts            # ⚠️ stub — source-string parser → ResolvedSource tagged union
-├── workspace.ts         # ⚠️ stub — workspace discovery, inheritance, graph
-├── lockfile.ts          # ⚠️ stub — pluggy.lock read/write/verify
-├── portable.ts          # ⚠️ stub — cross-platform helpers (hardlink, paths, signals)
-├── project.ts           # project.json resolution, Project types, OS-specific cache path
-├── defaults/            # templates copied into new projects (config.yml, package.java)
-├── template.ts          # ${project.x} substitution used by init and build
-├── logging.ts           # terminal logging built on picocolors
-├── types.d.ts           # ambient declarations for *.yml / *.java text imports
-└── **/*.test.ts         # contract tests co-located with their modules
-```
-
-Plus: `playground/` (manual-test sandbox), `bin/` (compiled binary output), `.github/workflows/` (`bun build --compile` release pipeline).
-
 ## Runtime & tooling
 
 Vite+ (`vp`) drives the development loop. Bun produces the shipped CLI binary. See the Vite+ block below for the full command surface.
@@ -80,7 +44,7 @@ Vite+ (`vp`) drives the development loop. Bun produces the shipped CLI binary. S
 - `vp check` - format, lint, and type checks (Oxlint + Oxfmt + tsgo)
 - `vp test` - run tests via the bundled Vitest
 - `vp dev` / `vp pack` - library build during development
-- `bun build --compile --outfile=bin/pluggy ./src/mod.ts` - standalone CLI binary for releases
+- `bun build --compile --outfile=bin/pluggy ./src/index.ts` - standalone CLI binary for releases
 
 Vite+'s `pack` only emits JavaScript. The single-file executable is always produced with Bun's `--compile` flag, which is what ships to users via the install scripts.
 
@@ -90,7 +54,7 @@ Use `vite-plus/test` (the Vitest wrapper). Do **not** install `vitest` directly.
 
 ```ts
 import { expect, test } from "vite-plus/test";
-import { getPlatform } from "../src/platform/mod.ts";
+import { getPlatform } from "../src/platform/index.ts";
 
 test("spigot platform is registered", () => {
   expect(getPlatform("spigot").id).toBe("spigot");
@@ -101,12 +65,12 @@ Tests live next to the code they cover as `*.test.ts`. Network-dependent tests (
 
 ### CLI conventions
 
-- Every command lives in `src/commands/<name>.ts` and exports a factory `xxxCommand()` that returns a `Command` (from `commander`). `src/mod.ts` imports the factories and calls `program.addCommand()` — keep `mod.ts` thin.
+- Every command lives in `src/commands/<name>.ts` and exports a factory `xxxCommand()` that returns a `Command` (from `commander`). `src/index.ts` imports the factories and calls `program.addCommand()` — keep `index.ts` thin.
 - Inside an action, read global flags with `this.optsWithGlobals()` (the action must be a non-arrow `function` so `this` binds). Never reference a module-level `currentProject` — resolve fresh inside the action.
 - Every command must honour the global `--json` flag: emit a single structured JSON object on success, and a `{ status: "error", message, exitCode }` object on failure. Never mix JSON and human text in the same output.
-- Throw `InvalidArgumentError` (from `commander`) for user-input problems; throw regular `Error` for runtime/IO failures. Both are caught by the top-level handler in `src/mod.ts`, which formats them per `--json`.
+- Throw `InvalidArgumentError` (from `commander`) for user-input problems; throw regular `Error` for runtime/IO failures. Both are caught by the top-level handler in `src/index.ts`, which formats them per `--json`.
 - Use `@inquirer/prompts` for interactive prompts. `--yes` or `--json` must bypass prompts entirely — with `--json`, prompts become errors rather than hangs.
-- New platform providers go through `createPlatform((ctx) => ({ ... }))` and must be imported from `src/platform/mod.ts` for the side-effect registration. `createPlatform` must not perform I/O at module-load time — defer disk writes to the command that needs them (otherwise the Bun-compiled binary crashes reading from the read-only `$bunfs` path).
+- New platform providers go through `createPlatform((ctx) => ({ ... }))` and must be imported from `src/platform/index.ts` for the side-effect registration. `createPlatform` must not perform I/O at module-load time — defer disk writes to the command that needs them (otherwise the Bun-compiled binary crashes reading from the read-only `$bunfs` path).
 
 ### Stub-module convention
 
@@ -216,5 +180,5 @@ For GitHub Actions, consider using [`voidzero-dev/setup-vp`](https://github.com/
 
 - [ ] Run `vp install` after pulling remote changes and before getting started.
 - [ ] Run `vp check` and `vp test` to validate changes.
-- [ ] For release-shaped changes, verify `bun build --compile --outfile=bin/pluggy ./src/mod.ts` still produces a working binary.
+- [ ] For release-shaped changes, verify `bun build --compile --outfile=bin/pluggy ./src/index.ts` still produces a working binary.
 <!--VITE PLUS END-->

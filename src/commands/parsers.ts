@@ -6,7 +6,7 @@
 
 import { InvalidArgumentError } from "commander";
 
-import { getRegisteredPlatforms } from "../platform/mod.ts";
+import { getRegisteredPlatforms } from "../platform/index.ts";
 import { parseIdentifier } from "../source.ts";
 
 /**

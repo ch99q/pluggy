@@ -6,9 +6,11 @@ Thank you for your interest in contributing to Pluggy! This document provides gu
 
 ### Prerequisites
 
-- [Deno](https://deno.land/) v2.4.1 or later
+- [Bun](https://bun.sh/) 1.3 or later (for producing the single-file binary via `bun build --compile`)
+- [Vite+](https://vite.plus/) (`vp`) for the day-to-day dev loop — install, check, lint, format, test
 - Git
 - A text editor or IDE
+- JDK 21+ on the `PATH` (required by tests that hit BuildTools and by `pluggy dev`)
 
 ### Getting Started
 
@@ -25,38 +27,35 @@ Thank you for your interest in contributing to Pluggy! This document provides gu
 
 ### Development Workflow
 
-1. Make your changes
-2. Test your changes thoroughly:
+1. Install dependencies:
 
    ```bash
-   # Build the project
-   deno task build
-
-   # Test the binary
-   ./bin/pluggy --help
+   vp install
    ```
 
-3. Ensure code quality:
+2. Make your changes
+3. Run the checks Vite+ bundles (format, lint, type-check) and the test suite:
 
    ```bash
-   # Format code
-   deno fmt
+   vp check
+   vp test
+   ```
 
-   # Lint code
-   deno lint
+4. Build and smoke-test the single-file binary:
 
-   # Type check
-   deno check mod.ts
+   ```bash
+   bun build --compile --outfile=bin/pluggy ./src/index.ts
+   ./bin/pluggy --help
    ```
 
 ## Code Style
 
 - Use TypeScript with strict type checking
-- Follow Deno's standard formatting (use `deno fmt`)
+- Run `vp fmt` (Oxfmt) before committing; CI enforces it via `vp check`
 - Use meaningful variable and function names
 - Add JSDoc comments for public APIs
 - Keep functions focused and reasonably sized
-- Leverage modern Deno 2.x features like JSR imports and enhanced TypeScript support
+- Follow the design guidance in `conventions/QUALITY.md` and `conventions/PERFORMANCE.md`
 
 ## Testing
 
@@ -96,7 +95,7 @@ Use conventional commit format:
 When reporting issues, please include:
 
 - Operating system and version
-- Deno version
+- `pluggy -V` output (the CLI version) and the Bun version used to build it, if self-built
 - Steps to reproduce
 - Expected vs actual behavior
 - Any error messages

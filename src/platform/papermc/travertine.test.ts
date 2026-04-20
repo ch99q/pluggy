@@ -1,5 +1,5 @@
 import { expect, test } from "vite-plus/test";
-import { getPlatform } from "../mod.ts";
+import { getPlatform } from "../index.ts";
 
 test("travertine platform exists", () => {
   expect(getPlatform("travertine").id).toBe("travertine");

@@ -9,7 +9,7 @@ import { confirm } from "@inquirer/prompts";
 import defaultConfig from "../defaults/config.yml" with { type: "text" };
 import defaultPackage from "../defaults/package.java" with { type: "text" };
 
-import { getPlatform, getRegisteredPlatforms } from "../platform/mod.ts";
+import { getPlatform, getRegisteredPlatforms } from "../platform/index.ts";
 import { getCurrentProject, type Project, resolveProjectFile } from "../project.ts";
 import { replace } from "../template.ts";
 

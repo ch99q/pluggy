@@ -8,7 +8,7 @@ import { Command } from "commander";
 import { pickDescriptor } from "../build/descriptor.ts";
 import { type LockfileEntry, readLock } from "../lockfile.ts";
 import { bold, green, log, red, yellow } from "../logging.ts";
-import { getRegisteredPlatforms } from "../platform/mod.ts";
+import { getRegisteredPlatforms } from "../platform/index.ts";
 import { getCachePath, type ResolvedProject } from "../project.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { resolveWorkspaceContext, topologicalOrder, type WorkspaceContext } from "../workspace.ts";

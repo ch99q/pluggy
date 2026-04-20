@@ -7,7 +7,7 @@ import { basename, join, resolve } from "node:path";
 
 import { buildProject } from "../build/index.ts";
 import { log } from "../logging.ts";
-import { getPlatform } from "../platform/mod.ts";
+import { getPlatform } from "../platform/index.ts";
 import type { DescriptorSpec } from "../platform/platform.ts";
 import { linkOrCopy } from "../portable.ts";
 import { getCachePath, type ResolvedProject } from "../project.ts";

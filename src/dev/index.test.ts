@@ -21,7 +21,7 @@ vi.mock("../resolver/index.ts", () => ({
   resolveDependency: vi.fn(),
 }));
 
-vi.mock("../platform/mod.ts", () => ({
+vi.mock("../platform/index.ts", () => ({
   getPlatform: vi.fn(),
 }));
 
@@ -48,7 +48,7 @@ vi.mock("../portable.ts", async () => {
 });
 
 import { buildProject } from "../build/index.ts";
-import { getPlatform } from "../platform/mod.ts";
+import { getPlatform } from "../platform/index.ts";
 import type { DescriptorSpec, PlatformProvider, Version } from "../platform/platform.ts";
 import { resolveDependency } from "../resolver/index.ts";
 

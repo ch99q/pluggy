@@ -12,7 +12,7 @@ import { dirname, join, posix, relative } from "node:path";
 import yazl from "yazl";
 
 import { log } from "../logging.ts";
-import { getPlatform } from "../platform/mod.ts";
+import { getPlatform } from "../platform/index.ts";
 import { writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
 import { parseSource } from "../source.ts";

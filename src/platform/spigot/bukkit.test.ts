@@ -2,7 +2,7 @@ import process from "node:process";
 
 import { expect, test } from "vite-plus/test";
 
-import { getPlatform } from "../mod.ts";
+import { getPlatform } from "../index.ts";
 
 // bukkit.download runs BuildTools — slow and Java-dependent. Gated behind PLUGGY_INTEGRATION=1.
 const integration = process.env.PLUGGY_INTEGRATION === "1";
