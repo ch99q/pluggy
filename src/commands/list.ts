@@ -112,16 +112,12 @@ export async function doList(options: ListOptions): Promise<ListResult> {
     deps = deps.filter((d) => d.outdated === true);
   }
 
-  if (options.tree && !options.json) {
-    log.info(
-      dim("(--tree not yet implemented; transitive deps aren't tracked — printing flat list)"),
-    );
-  }
-
   const result: ListResult = { scope, deps, registries, target };
 
   if (options.json) {
     console.log(JSON.stringify({ status: "success", ...result }, null, 2));
+  } else if (options.tree) {
+    printTreeList(result, options.outdated === true);
   } else {
     printHumanList(result, options.outdated === true);
   }
@@ -252,6 +248,49 @@ function printHumanList(result: ListResult, outdatedMode: boolean): void {
     for (const reg of result.registries) {
       const auth = reg.authenticated ? dim(" [authenticated]") : "";
       log.info(`  ${reg.url}${auth}`);
+    }
+  }
+}
+
+/**
+ * Render the dep list with tree-draw characters. Maven transitive closures
+ * aren't persisted in the lockfile yet, so each declared dep is shown as a
+ * leaf without children; the signature stays the same once transitive
+ * tracking lands and child rendering can slot in.
+ */
+function printTreeList(result: ListResult, outdatedMode: boolean): void {
+  log.info(bold(`${result.scope}: ${result.target}`));
+  if (result.deps.length === 0) {
+    const empty = outdatedMode ? "  (everything is up to date)" : "  (no dependencies declared)";
+    log.info(dim(empty));
+  } else {
+    log.info("");
+    log.info(bold(outdatedMode ? "outdated dependencies:" : "dependencies:"));
+    for (let i = 0; i < result.deps.length; i++) {
+      const dep = result.deps[i];
+      const last = i === result.deps.length - 1;
+      const branch = last ? "└──" : "├──";
+      const resolved = dep.resolvedVersion ?? dim("(unresolved)");
+      const update =
+        dep.outdated === true && dep.latestVersion !== null && dep.latestVersion !== undefined
+          ? `  ${yellow(`→ ${dep.latestVersion}`)}`
+          : "";
+      log.info(
+        `  ${dim(branch)} ${dep.name}  ${dim(`@${dep.declaredVersion} → ${resolved}`)}${update}  ${dim(describeSource(dep.source))}`,
+      );
+    }
+  }
+  log.info("");
+  log.info(bold("registries:"));
+  if (result.registries.length === 0) {
+    log.info(dim("  (none declared; Modrinth is implicit)"));
+  } else {
+    for (let i = 0; i < result.registries.length; i++) {
+      const reg = result.registries[i];
+      const last = i === result.registries.length - 1;
+      const branch = last ? "└──" : "├──";
+      const auth = reg.authenticated ? dim(" [authenticated]") : "";
+      log.info(`  ${dim(branch)} ${reg.url}${auth}`);
     }
   }
 }
