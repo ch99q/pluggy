@@ -301,6 +301,8 @@ Use a `workspace:<name>` source, where `<name>` matches the target workspace's `
 - The sibling's compiled jar is on the dependent's classpath.
 - The sibling is **not** bundled into the dependent's jar by default (consumers install both). Override via `shading` if a fat jar is wanted.
 
+Because the resolver runs before (or independently of) the build, workspace sources get a sentinel integrity `"sha256-pending-build"` in the lockfile until `build` has produced the sibling's jar at `<workspace.root>/bin/<name>-<version>.jar`. The install flow re-hashes the jar and replaces the sentinel before considering the lockfile fresh.
+
 **Detecting context:**
 
 Given a cwd, pluggy walks up looking for a `project.json`:
@@ -699,6 +701,42 @@ Shared across all workspaces — one resolution pass, consistent versions across
 - Which workspace(s) declared this dep.
 
 Subsequent `install` runs verify the lockfile; `install --force` or edits to `project.json:dependencies` invalidate and re-resolve.
+
+#### Schema
+
+```ts
+interface Lockfile {
+  version: 1; // must be exactly 1
+  entries: Record<string, LockfileEntry>;
+}
+
+interface LockfileEntry {
+  source: ResolvedSource; // per §6.3
+  resolvedVersion: string; // concrete, never a range
+  integrity: string; // see "Integrity encoding"
+  declaredBy: string[]; // workspace names
+}
+```
+
+#### On-disk format
+
+Pluggy emits lockfiles in a **stable, diff-friendly form** so reviewing them in PRs is sane:
+
+- 2-space-indented JSON.
+- Trailing LF on the last line (LF line endings on every platform — see §3.8).
+- Entries sorted alphabetically by key before serialization, regardless of insertion order.
+
+These are stability guarantees, not implementation details. Pre-1.0 they may change; post-1.0 they are part of the public contract.
+
+#### Integrity encoding
+
+Integrity values are formatted as `"sha256-<hex>"` — lowercase hex digest, no base64 variants, no alternative algorithms. The hex form is deterministic, diff-friendly, and directly comparable byte-for-byte.
+
+One reserved sentinel exists: **`"sha256-pending-build"`** is written by the resolver for `workspace:` dependencies that reference a sibling workspace whose jar has not been built yet. The install flow must re-hash the sibling jar after `build` produces it and replace the sentinel before considering the lockfile fresh.
+
+#### Atomicity
+
+Writes use a `<pid>`-stamped temp file in the same directory followed by `rename()` over the target, so a crash mid-write leaves either the previous lockfile or an orphan temp — never a half-written lockfile.
 
 Commit `pluggy.lock` for reproducible builds.
 
