@@ -2,11 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { bukkitDescriptor } from "../descriptor/bukkit.ts";
 import { createPlatform } from "../platform.ts";
 import { compile, versions, VERSIONS_URL } from "./buildtools.ts";
 
 export default createPlatform((ctx) => ({
   id: "bukkit",
+  descriptor: bukkitDescriptor,
 
   async getVersionInfo(version: string) {
     const res = await fetch(`${VERSIONS_URL}${version}.json`);

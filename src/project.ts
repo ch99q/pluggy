@@ -4,20 +4,26 @@ import { dirname, join } from "node:path";
 import process from "node:process";
 
 export interface Project {
-  compability: {
-    versions: string[];
-    platforms: string[];
-  };
   name: string;
   version: string;
   description?: string;
   authors?: string[];
-  main: string;
-  ide?: string;
-  shading?: Record<string, Shading>;
+  /**
+   * Fully-qualified main class. Required for plugin workspaces; not required
+   * on a root `project.json` that declares `workspaces`.
+   */
+  main?: string;
+  ide?: "vscode" | "eclipse" | "intellij";
+  compatibility: {
+    versions: string[];
+    platforms: string[];
+  };
   dependencies?: Record<string, string | Dependency>;
   registries?: (string | Registry)[];
+  shading?: Record<string, Shading>;
+  resources?: Record<string, string>;
   workspaces?: string[];
+  dev?: DevConfig;
 }
 
 export type ResolvedProject = Project & {
@@ -41,6 +47,15 @@ export interface Registry {
     username: string;
     password: string;
   };
+}
+
+export interface DevConfig {
+  port?: number;
+  memory?: string;
+  onlineMode?: boolean;
+  jvmArgs?: string[];
+  serverProperties?: Record<string, string | number | boolean>;
+  extraPlugins?: string[];
 }
 
 export function getCachePath(): string {

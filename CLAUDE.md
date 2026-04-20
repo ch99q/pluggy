@@ -38,24 +38,39 @@ See `conventions/` for the full conventions with examples in both TypeScript and
 
 ## Repository structure
 
-pluggy is a Minecraft plugin CLI. The source tree is TypeScript, organized around a [commander](https://github.com/tj/commander.js) command tree and a pluggable platform registry:
+pluggy is a Minecraft plugin CLI. The source tree is TypeScript, organized around a [commander](https://github.com/tj/commander.js) command tree and a pluggable platform registry. Many modules are currently stubs — see `docs/SPEC.md` §8 for what's implemented vs planned.
 
-- `src/mod.ts` - CLI entrypoint (commander command tree, global options, error handling)
-- `src/commands/` - command implementations (currently only `init.ts` — other commands are inline stubs in `mod.ts`)
-- `src/platform/` - platform registry and providers
-  - `src/platform/platform.ts` - `PlatformProvider` interface and `createPlatform` registry
-  - `src/platform/mod.ts` - imports each provider for side-effect registration
-  - `src/platform/spigot/` - Spigot, Bukkit, BuildTools
-  - `src/platform/papermc/` - Paper, Folia, Velocity, Waterfall, Travertine
-- `src/project.ts` - `project.json` resolution, `Project` types, and OS-appropriate cache path
-- `src/defaults/` - templates copied into new projects (`config.yml`, `package.java`)
-- `src/template.ts` - string-template replacer used by `init`
-- `src/logging.ts` - terminal logging helpers (colors, levels) built on `picocolors`
-- `src/upgrade.ts` - self-upgrade command (fetches latest GitHub release and prints instructions)
-- `src/types.d.ts` - ambient declarations for `*.yml` / `*.java` text imports
-- `playground/` - local sandbox project for manual testing
-- `bin/` - output directory for the compiled `pluggy` binary
-- `.github/workflows/` - release pipeline (build with `bun build --compile` + publish binaries)
+```
+src/
+├── mod.ts               # CLI entrypoint; thin dispatcher over commands/
+├── commands/            # one file per subcommand, each exports an XxxCommand() factory
+│   ├── init.ts          # ✅ implemented
+│   ├── install.ts, remove.ts, info.ts, search.ts, list.ts,
+│   ├── build.ts, doctor.ts, dev.ts     # ⚠️ stubs (throw "not implemented")
+│   ├── upgrade.ts       # ✅ simplified (fetch latest release, print install instructions)
+│   └── parsers.ts       # commander argParser functions (semver, version, platform, integer)
+├── platform/            # platform registry + providers
+│   ├── platform.ts      # PlatformProvider interface + createPlatform registry
+│   ├── mod.ts           # imports each provider for side-effect registration
+│   ├── descriptor/      # per-family descriptor specs (bukkit.ts, bungee.ts, velocity.ts)
+│   ├── spigot/          # Spigot, Bukkit, BuildTools
+│   └── papermc/         # Paper, Folia, Velocity, Waterfall, Travertine
+├── resolver/            # ⚠️ stub — dep resolution per source kind (modrinth, maven, file, workspace)
+├── build/               # ⚠️ stub — compile → resources → descriptor → shade → jar
+├── dev/                 # ⚠️ stub — dev-server runtime (stage, spawn, watch, plugins)
+├── source.ts            # ⚠️ stub — source-string parser → ResolvedSource tagged union
+├── workspace.ts         # ⚠️ stub — workspace discovery, inheritance, graph
+├── lockfile.ts          # ⚠️ stub — pluggy.lock read/write/verify
+├── portable.ts          # ⚠️ stub — cross-platform helpers (hardlink, paths, signals)
+├── project.ts           # project.json resolution, Project types, OS-specific cache path
+├── defaults/            # templates copied into new projects (config.yml, package.java)
+├── template.ts          # ${project.x} substitution used by init and build
+├── logging.ts           # terminal logging built on picocolors
+├── types.d.ts           # ambient declarations for *.yml / *.java text imports
+└── **/*.test.ts         # contract tests co-located with their modules
+```
+
+Plus: `playground/` (manual-test sandbox), `bin/` (compiled binary output), `.github/workflows/` (`bun build --compile` release pipeline).
 
 ## Runtime & tooling
 
@@ -86,10 +101,33 @@ Tests live next to the code they cover as `*.test.ts`. Network-dependent tests (
 
 ### CLI conventions
 
-- Every command added to `src/mod.ts` must honour the global `--json` flag: emit a single structured JSON object on success, and a `{ status: "error", message, exitCode }` object on failure. Never mix JSON and human text in the same output.
-- Throw `InvalidArgumentError` (from `commander`) for user-input problems; throw regular `Error` for runtime/IO failures. Both are caught by the top-level handler in `src/mod.ts`, which formats them per the `--json` flag.
-- Use `@inquirer/prompts` for interactive prompts (e.g. `confirm({ message, default })`). Never block the CLI with synchronous prompts.
+- Every command lives in `src/commands/<name>.ts` and exports a factory `xxxCommand()` that returns a `Command` (from `commander`). `src/mod.ts` imports the factories and calls `program.addCommand()` — keep `mod.ts` thin.
+- Inside an action, read global flags with `this.optsWithGlobals()` (the action must be a non-arrow `function` so `this` binds). Never reference a module-level `currentProject` — resolve fresh inside the action.
+- Every command must honour the global `--json` flag: emit a single structured JSON object on success, and a `{ status: "error", message, exitCode }` object on failure. Never mix JSON and human text in the same output.
+- Throw `InvalidArgumentError` (from `commander`) for user-input problems; throw regular `Error` for runtime/IO failures. Both are caught by the top-level handler in `src/mod.ts`, which formats them per `--json`.
+- Use `@inquirer/prompts` for interactive prompts. `--yes` or `--json` must bypass prompts entirely — with `--json`, prompts become errors rather than hangs.
 - New platform providers go through `createPlatform((ctx) => ({ ... }))` and must be imported from `src/platform/mod.ts` for the side-effect registration. `createPlatform` must not perform I/O at module-load time — defer disk writes to the command that needs them (otherwise the Bun-compiled binary crashes reading from the read-only `$bunfs` path).
+
+### Stub-module convention
+
+Many modules are stubs: their functions throw `new Error("not implemented: <name>")`. When implementing a stub:
+
+1. Write or un-skip the contract tests in `<module>.test.ts` first. They're `describe.skip` blocks with concrete assertions — they define the contract the implementation must satisfy.
+2. Replace the `throw` body with the implementation.
+3. Remove the `.skip` from the tests and confirm they pass with `vp test <module>`.
+4. Do not change the exported function signatures, argument shapes, or return types without updating `docs/SPEC.md` first. Callers in other modules rely on them.
+
+This pattern lets parallel agents implement different modules without blocking on each other.
+
+### Cross-platform requirements
+
+Every file path, process spawn, signal, and UI concern must work identically on macOS, Linux, and Windows. Concrete rules live in `docs/SPEC.md` §3.8:
+
+- Paths in `project.json` / `pluggy.lock` are always forward-slashed (normalize via `portable.toPosixPath`).
+- Link large files with `portable.linkOrCopy` (hardlink first, copy fallback — never symlink).
+- Signal handling goes through `portable.installShutdownHandler` which wraps `child.kill()` (the cross-platform Node shim).
+- Write generated files with LF line endings (`portable.writeFileLF`).
+- Never spawn a shell — always call `spawn(cmd, args, ...)` directly. Node handles `.exe` on Windows.
 
 <!--VITE PLUS START-->
 

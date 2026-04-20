@@ -1,3 +1,5 @@
+import type { ResolvedProject } from "../project.ts";
+
 import { getCachePath } from "../project.ts";
 
 export interface Version {
@@ -10,8 +12,17 @@ export interface MavenAPI {
   dependencies: Array<{ groupId: string; artifactId: string; version: string }>;
 }
 
+export interface DescriptorSpec {
+  /** Path inside the final plugin jar where the descriptor is written. */
+  path: string;
+  format: "yaml" | "json" | "toml";
+  /** Serialize the descriptor for a given project. */
+  generate(project: ResolvedProject): string;
+}
+
 export interface PlatformProvider {
   id: string;
+  descriptor: DescriptorSpec;
 
   getVersions(): Promise<string[]>;
   getLatestVersion(): Promise<Version>;

@@ -2,7 +2,7 @@
 
 The canonical specification for the pluggy CLI: `project.json` schema, every command and flag, cross-cutting behavior.
 
-This document describes the **target state**. Where the code still uses older names (e.g. `compability`), the spec uses the final names and the code will be migrated to match.
+This document describes the **target state**. Current code implements a subset; see §8 for outstanding work.
 
 Status markers:
 

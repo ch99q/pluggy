@@ -2,11 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { bukkitDescriptor } from "../descriptor/bukkit.ts";
 import { createPlatform, type Version } from "../platform.ts";
 import * as papermc from "./papermc.ts";
 
 export default createPlatform((ctx) => ({
   id: "paper",
+  descriptor: bukkitDescriptor,
 
   async getVersionInfo(version: string): Promise<Version> {
     const versionsList = await papermc.versions("paper");

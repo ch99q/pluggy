@@ -2,11 +2,13 @@ import { existsSync, readFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
+import { velocityDescriptor } from "../descriptor/velocity.ts";
 import { createPlatform, type Version } from "../platform.ts";
 import * as papermc from "./papermc.ts";
 
 export default createPlatform((ctx) => ({
   id: "velocity",
+  descriptor: velocityDescriptor,
 
   async getVersionInfo(version: string): Promise<Version> {
     const versionsList = await papermc.versions("velocity");

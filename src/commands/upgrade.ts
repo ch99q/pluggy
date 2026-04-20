@@ -1,6 +1,6 @@
 import { Command } from "commander";
 
-import { bold, brightBlue } from "./logging.ts";
+import { bold, brightBlue } from "../logging.ts";
 
 interface GithubRelease {
   tag_name: string;
@@ -28,7 +28,7 @@ async function fetchLatestRelease(repository: string, token?: string): Promise<G
   return data;
 }
 
-export function UpgradeCommand(options: UpgradeOptions): Command {
+export function upgradeCommand(options: UpgradeOptions): Command {
   return new Command("upgrade")
     .description("Upgrade pluggy to the latest version.")
     .action(async () => {
