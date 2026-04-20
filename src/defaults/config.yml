@@ -1,5 +1,5 @@
-# Configuration file for $__PROJECT_NAME__$
-# 
+# Configuration file for ${project.name}
+#
 # This is the main configuration file for your plugin.
 # You can customize these settings according to your plugin's needs.
 
@@ -7,17 +7,17 @@
 plugin:
   enabled: true
   debug: false
-  
+
 # Feature toggles
 features:
   example-feature: true
-  
+
 # Messages (supports color codes with &)
 messages:
-  prefix: "&7[&6$__PROJECT_NAME__$&7]&r "
+  prefix: "&7[&6${project.name}&7]&r "
   no-permission: "&cYou don't have permission to use this command!"
   plugin-reloaded: "&aPlugin configuration reloaded successfully!"
-  
+
 # Example configuration values
 settings:
   max-items: 64

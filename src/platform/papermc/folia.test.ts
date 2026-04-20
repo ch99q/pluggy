@@ -1,0 +1,30 @@
+import { expect, test } from "vite-plus/test";
+import { getPlatform } from "../mod.ts";
+
+test("folia platform exists", () => {
+  expect(getPlatform("folia").id).toBe("folia");
+  expect(getPlatform("Folia").id).toBe("folia");
+  expect(() => getPlatform("@Folia")).toThrow("Platform with id '@Folia' not found");
+});
+
+test("folia platform versions", async () => {
+  const folia = getPlatform("folia");
+  const versions = await folia.getVersions();
+  expect(Array.isArray(versions)).toBe(true);
+  expect(versions).toEqual(expect.arrayContaining(["1.21.6", "1.21.5", "1.21.4"]));
+  expect(versions.length).toBeGreaterThan(0);
+
+  const latest = await folia.getLatestVersion();
+  expect(latest.version).toBe(versions[0]);
+});
+
+test("folia platform download latest version", async () => {
+  const folia = getPlatform("folia");
+  const latestVersion = await folia.getLatestVersion();
+  const result = await folia.download(latestVersion, true);
+
+  expect(result?.version).toBe(latestVersion.version);
+  expect(result?.build).toBe(latestVersion.build);
+  expect(result?.output instanceof Uint8Array).toBe(true);
+  expect(result?.output.length).toBeGreaterThan(0);
+});

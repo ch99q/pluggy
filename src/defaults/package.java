@@ -1,15 +1,15 @@
-package $__PROJECT_PACKAGE_NAME__$;
+package ${project.packageName};
 
 import org.bukkit.plugin.java.JavaPlugin;
 
 /**
- * Main plugin class for $__PROJECT_NAME__$
+ * Main plugin class for ${project.name}
  * 
  * This class serves as the entry point for your Minecraft plugin.
  * It extends JavaPlugin and provides lifecycle methods for enabling
  * and disabling your plugin.
  */
-public class $__PROJECT_MAIN_CLASS__$ extends JavaPlugin {
+public class ${project.className} extends JavaPlugin {
     
     /**
      * Called when the plugin is enabled
@@ -20,8 +20,8 @@ public class $__PROJECT_MAIN_CLASS__$ extends JavaPlugin {
      */
     @Override
     public void onEnable() {
-        getLogger().info("$__PROJECT_NAME__$ has been enabled!");
-        
+        getLogger().info("${project.name} has been enabled!");
+
         // TODO: Initialize your plugin here
     }
     
@@ -34,8 +34,8 @@ public class $__PROJECT_MAIN_CLASS__$ extends JavaPlugin {
      */
     @Override
     public void onDisable() {
-        getLogger().info("$__PROJECT_NAME__$ has been disabled!");
-        
+        getLogger().info("${project.name} has been disabled!");
+
         // TODO: Clean up resources here
     }
 }

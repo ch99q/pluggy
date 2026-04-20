@@ -1,5 +1,0 @@
-{
-  "tasks": {
-    "build": "deno compile --unstable-net --allow-net --allow-env --allow-read --allow-write --allow-run --unstable-raw-imports --include=static --output=./bin/pluggy ./mod.ts"
-  }
-}

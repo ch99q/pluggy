@@ -1,11 +1,10 @@
-
 ```
- ____  _                            
-|  _ \| |_   _  __ _  __ _ _   _ 
+ ____  _
+|  _ \| |_   _  __ _  __ _ _   _
 | |_) | | | | |/ _` |/ _` | | | |
 |  __/| | |_| | (_| | (_| | |_| |
 |_|   |_|\__,_|\__, |\__, |\__, |
-               |___/ |___/ |___/ 
+               |___/ |___/ |___/
 ```
 
 # Pluggy
@@ -28,11 +27,13 @@ Pluggy is built around the Modrinth ecosystem, providing a cohesive workflow fro
 ## Installation
 
 ### Windows (PowerShell)
+
 ```
 irm https://raw.githubusercontent.com/ch99q/pluggy/main/install.ps1 | iex
 ```
 
 ### Unix-like Systems (macOS, Linux)
+
 ```
 curl -fsSL https://raw.githubusercontent.com/ch99q/pluggy/main/install.sh | bash
 ```
@@ -93,7 +94,7 @@ pluggy info worldedit@7.3.15
 ### Global Options
 
 - `--verbose, -v` - Enable detailed logging output
-- `--no-color` - Disable colored terminal output  
+- `--no-color` - Disable colored terminal output
 - `--config-file <path>` - Specify alternative plugin.json location
 - `--help, -h` - Display command-specific help
 - `--version, -V` - Show Pluggy version information
@@ -127,9 +128,7 @@ Pluggy projects are configured via `plugin.json` in the project root:
     "versions": ["1.21.7", "1.21.3"],
     "platforms": ["paper", "bukkit"]
   },
-  "registries": [
-    "https://repo1.maven.org/maven2/"
-  ]
+  "registries": ["https://repo1.maven.org/maven2/"]
 }
 ```
 
@@ -166,11 +165,13 @@ Shading configuration allows fine-grained control over which dependency classes 
 Patterns use glob syntax (`**` for recursive matching, `*` for single-level wildcards).
 
 ### Maven Dependencies
+
 Pluggy supports Maven-style dependencies in the format `maven:groupId:artifactId:versionId`. This allows you to include libraries from Maven Central or other configured repositories:
 
 ```bash
 pluggy install maven:net.kyori:adventure-api@4.22.0
 ```
+
 This will download the specified version of the library and include it in your project.
 
 ```xml
@@ -191,9 +192,7 @@ The above XML snippet would be the same as adding the following to your `plugin.
 
 ```json
 {
-  "registries": [
-    "https://s01.oss.sonatype.org/content/repositories/snapshots/"
-  ]
+  "registries": ["https://s01.oss.sonatype.org/content/repositories/snapshots/"]
 }
 ```
 
@@ -202,7 +201,6 @@ And then installing the dependency with:
 ```bash
 pluggy install maven:net.kyori:adventure-api@4.22.0
 ```
-
 
 ### Local Dependencies
 
@@ -232,8 +230,9 @@ The build process performs these operations:
 ### Template Variables
 
 All resource files are processed with template variable substitution during build:
+
 - `$__PROJECT_NAME__$` - Project name
-- `$__PROJECT_VERSION__$` - Project version  
+- `$__PROJECT_VERSION__$` - Project version
 - `$__PROJECT_MAIN_CLASS__$` - Main class name only
 - `$__PROJECT_PACKAGE_NAME__$` - Package name without class
 - `$__PROJECT_DESCRIPTION__$` - Project description
@@ -243,10 +242,12 @@ This allows you to use dynamic values in any resource file (config.yml, plugin.y
 ## Development
 
 ### Prerequisites
+
 - Deno 2.4.1 or later
 - Git
 
 ### Building from Source
+
 ```bash
 git clone https://github.com/ch99q/pluggy.git
 cd pluggy
@@ -271,4 +272,3 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, 
 ## License
 
 Licensed under the MIT License. See [LICENSE](LICENSE) for details.
-

@@ -5,11 +5,13 @@ Thank you for your interest in contributing to Pluggy! This document provides gu
 ## Development Setup
 
 ### Prerequisites
+
 - [Deno](https://deno.land/) v2.4.1 or later
 - Git
 - A text editor or IDE
 
 ### Getting Started
+
 1. Fork the repository
 2. Clone your fork locally:
    ```bash
@@ -22,23 +24,27 @@ Thank you for your interest in contributing to Pluggy! This document provides gu
    ```
 
 ### Development Workflow
+
 1. Make your changes
 2. Test your changes thoroughly:
+
    ```bash
    # Build the project
    deno task build
-   
+
    # Test the binary
    ./bin/pluggy --help
    ```
+
 3. Ensure code quality:
+
    ```bash
    # Format code
    deno fmt
-   
+
    # Lint code
    deno lint
-   
+
    # Type check
    deno check mod.ts
    ```
@@ -77,6 +83,7 @@ Thank you for your interest in contributing to Pluggy! This document provides gu
 ## Commit Message Format
 
 Use conventional commit format:
+
 - `feat:` for new features
 - `fix:` for bug fixes
 - `docs:` for documentation changes
@@ -87,6 +94,7 @@ Use conventional commit format:
 ## Reporting Issues
 
 When reporting issues, please include:
+
 - Operating system and version
 - Deno version
 - Steps to reproduce
@@ -96,6 +104,7 @@ When reporting issues, please include:
 ## Feature Requests
 
 Feature requests are welcome! Please:
+
 - Check if the feature already exists
 - Describe the use case clearly
 - Explain why it would be valuable
