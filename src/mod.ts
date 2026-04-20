@@ -4,6 +4,7 @@ import process from "node:process";
 import { Command, InvalidArgumentError } from "commander";
 
 import { buildCommand } from "./commands/build.ts";
+import { completionsCommand } from "./commands/completions.ts";
 import { devCommand } from "./commands/dev.ts";
 import { doctorCommand } from "./commands/doctor.ts";
 import { infoCommand } from "./commands/info.ts";
@@ -43,6 +44,7 @@ program.addCommand(buildCommand());
 program.addCommand(doctorCommand());
 program.addCommand(devCommand());
 program.addCommand(upgradeCommand({ repository: "ch99q/pluggy" }));
+program.addCommand(completionsCommand(program));
 
 program.exitOverride();
 
