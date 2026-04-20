@@ -115,7 +115,7 @@ A pluggy project is defined by `project.json` at the project root. `pluggy` walk
 | `registries`    | `array`    | optional               | Additional Maven repositories. See §1.5.                                                                                                    |
 | `shading`       | `object`   | optional               | Per-dependency class include/exclude rules. See §1.6.                                                                                       |
 | `resources`     | `object`   | optional               | Files bundled into the jar. See §1.7.                                                                                                       |
-| `ide`           | `string`   | optional               | `"vscode"` ✅ / `"eclipse"` ✅ / `"intellij"` 🎯. Build writes matching project files pointing at the resolved classpath.                   |
+| `ide`           | `string`   | optional               | `"vscode"` ✅ / `"eclipse"` ✅ / `"intellij"` ✅. Build writes matching project files pointing at the resolved classpath.                   |
 | `workspaces`    | `string[]` | optional               | Paths to workspace sub-projects. See §1.8.                                                                                                  |
 | `dev`           | `object`   | optional               | Dev server settings for `pluggy dev`. See §1.9.                                                                                             |
 
@@ -504,18 +504,27 @@ Global command; not workspace-aware. Only searches Modrinth (Maven has no search
 
 Aliases: `ls`.
 
-| Flag                 | Type   | Default   | Notes                                                                               |
-| -------------------- | ------ | --------- | ----------------------------------------------------------------------------------- |
-| `--tree`             | bool   | false     | Render with tree-draw characters (transitive children 🎯 when lockfile tracks them) |
-| `--outdated`         | bool   | false     | Only list deps with newer stable versions on Modrinth                               |
-| `--workspace <name>` | string | —         | Show a specific workspace                                                           |
-| `--workspaces`       | bool   | see below | Aggregated view across all workspaces                                               |
+| Flag                 | Type   | Default   | Notes                                                 |
+| -------------------- | ------ | --------- | ----------------------------------------------------- |
+| `--tree`             | bool   | false     | Render with tree-draw characters (with transitives)   |
+| `--outdated`         | bool   | false     | Only list deps with newer stable versions on Modrinth |
+| `--workspace <name>` | string | —         | Show a specific workspace                             |
+| `--workspaces`       | bool   | see below | Aggregated view across all workspaces                 |
 
 **Default scope:** at a root with workspaces → aggregated. In a workspace or standalone → current project.
 
 **Short-form dep resolution.** A short-form dependency value (`"worldedit": "7.3.15"`) is always treated as a Modrinth pin where the **dep name doubles as the slug**. This is symmetric with the schema rule in §1.4.
 
 **Registries** are rendered as `{ url, authenticated }` with `authenticated: true` when the entry has `credentials`. Usernames and passwords are never emitted in either human or JSON output — `list` is safe to share.
+
+**Transitive rendering (`--tree`).** When the lockfile records transitives for a top-level dep (populated by `install` from the resolver's POM-resolved closure — §3.5), `--tree` renders them as nested children using standard `tree(1)` glyphs:
+
+- `├──` / `└──` on the branch at the current level
+- `│   ` / `    ` continuing the indentation when descending
+
+JSON output exposes transitives as `DepEntry.children` — recursively populated, omitted for leaves. Each child carries its own `source`, `resolvedVersion`, `integrity`, and (if present) nested `children`; `declaredBy` is always `[]` for transitives.
+
+**`--outdated` interaction.** `--outdated` applies only to top-level declared deps. Transitive outdated-checking is intentionally out of scope — transitives come from the parent's POM, not the user's declarations, so bumping a transitive without its parent is meaningless. 🎯 A future pass could still surface known-vulnerable or EOL transitives for advisory purposes.
 
 ### 2.9 `build` — compile and package ⚠️
 
@@ -786,6 +795,7 @@ Shared across all workspaces — one resolution pass, consistent versions across
 - Source (Modrinth URL, Maven coordinate, or file path).
 - Integrity hash (SHA-256 of the resolved jar).
 - Which workspace(s) declared this dep.
+- The direct transitive closure (Maven POM-resolved children, each with their own nested closure).
 
 Subsequent `install` runs verify the lockfile; `install --force` or edits to `project.json:dependencies` invalidate and re-resolve.
 
@@ -802,8 +812,29 @@ interface LockfileEntry {
   resolvedVersion: string; // concrete, never a range
   integrity: string; // see "Integrity encoding"
   declaredBy: string[]; // workspace names
+  transitives?: TransitiveEntry[]; // omitted when empty
+}
+
+interface TransitiveEntry {
+  source: ResolvedSource;
+  resolvedVersion: string;
+  integrity: string;
+  transitives?: TransitiveEntry[]; // nested recursively
 }
 ```
+
+**Transitive closure (nested form).** Top-level entries embed their full transitive tree inline; each `TransitiveEntry` holds its own children. The shape mirrors `LockfileEntry` minus `declaredBy`, which is only meaningful for user-declared deps.
+
+This nested layout has a few useful properties:
+
+- Each declared dep remembers its own tree verbatim — no cross-entry dedup ambiguity.
+- `list --tree` renders recursively without a second pass over the lockfile.
+- `readLock` validates transitives locally, alongside the parent entry.
+- Adding or removing a declared dep doesn't require garbage-collecting shared transitive entries.
+
+The trade-off is duplication: if two declared deps share a transitive, it appears under both. That's acceptable at this scale — Minecraft plugin dep graphs are small enough that the on-disk overhead is trivial compared to the clarity of "what does each of my direct deps drag in?".
+
+Empty transitive arrays are omitted (not serialized as `"transitives": []`) to keep diffs clean. Readers tolerate both forms on input.
 
 #### On-disk format
 

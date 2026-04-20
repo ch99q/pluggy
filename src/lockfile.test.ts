@@ -151,6 +151,108 @@ describe("lockfile I/O", () => {
     expect(() => readLock(rootDir)).toThrow(/integrity/);
   });
 
+  test("writeLock then readLock round-trips a nested transitives tree", async () => {
+    const lock: Lockfile = {
+      version: 1,
+      entries: {
+        "paper-api": {
+          source: {
+            kind: "maven",
+            groupId: "io.papermc.paper",
+            artifactId: "paper-api",
+            version: "1.21.8-R0.1-SNAPSHOT",
+          },
+          resolvedVersion: "1.21.8-R0.1-SNAPSHOT",
+          integrity: "sha256-paper",
+          declaredBy: ["my-plugin"],
+          transitives: [
+            {
+              source: {
+                kind: "maven",
+                groupId: "net.kyori",
+                artifactId: "adventure-api",
+                version: "4.14.0",
+              },
+              resolvedVersion: "4.14.0",
+              integrity: "sha256-adv",
+              transitives: [
+                {
+                  source: {
+                    kind: "maven",
+                    groupId: "net.kyori",
+                    artifactId: "examination-api",
+                    version: "1.3.0",
+                  },
+                  resolvedVersion: "1.3.0",
+                  integrity: "sha256-exam",
+                },
+              ],
+            },
+            {
+              source: {
+                kind: "maven",
+                groupId: "com.google.guava",
+                artifactId: "guava",
+                version: "32.1.2",
+              },
+              resolvedVersion: "32.1.2",
+              integrity: "sha256-guava",
+            },
+          ],
+        },
+      },
+    };
+    await writeLock(rootDir, lock);
+    const read = readLock(rootDir);
+    expect(read).toEqual(lock);
+  });
+
+  test("readLock rejects a transitives entry missing its source", async () => {
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          "paper-api": {
+            source: {
+              kind: "maven",
+              groupId: "io.papermc.paper",
+              artifactId: "paper-api",
+              version: "1.21.8",
+            },
+            resolvedVersion: "1.21.8",
+            integrity: "sha256-paper",
+            declaredBy: ["my-plugin"],
+            transitives: [{ resolvedVersion: "1.2.3", integrity: "sha256-x" }],
+          },
+        },
+      }),
+      "utf8",
+    );
+    expect(() => readLock(rootDir)).toThrow(/transitives\[0\]/);
+    expect(() => readLock(rootDir)).toThrow(/missing "source"/);
+  });
+
+  test("readLock rejects a non-array transitives field", async () => {
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          foo: {
+            source: { kind: "modrinth", slug: "foo", version: "1.0.0" },
+            resolvedVersion: "1.0.0",
+            integrity: "sha256-a",
+            declaredBy: ["root"],
+            transitives: "nope",
+          },
+        },
+      }),
+      "utf8",
+    );
+    expect(() => readLock(rootDir)).toThrow(/"transitives" must be an array/);
+  });
+
   test("readLock rejects an unknown source kind", async () => {
     await writeFile(
       join(rootDir, "pluggy.lock"),

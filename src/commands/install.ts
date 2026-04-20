@@ -7,7 +7,14 @@ import { writeFileLF } from "../portable.ts";
 import type { Project } from "../project.ts";
 import { resolveDependency } from "../resolver/index.ts";
 import type { ResolvedDependency } from "../resolver/index.ts";
-import { type Lockfile, type LockfileEntry, readLock, verifyLock, writeLock } from "../lockfile.ts";
+import {
+  type Lockfile,
+  type LockfileEntry,
+  type TransitiveEntry,
+  readLock,
+  verifyLock,
+  writeLock,
+} from "../lockfile.ts";
 import { parseIdentifier, parseSource, stringifySource } from "../source.ts";
 
 import {
@@ -182,12 +189,34 @@ async function installSingle(opts: InstallOptions, scope: ResolvedScope): Promis
 }
 
 function toLockEntry(resolved: ResolvedDependency, declaredBy: string[]): LockfileEntry {
-  return {
+  const entry: LockfileEntry = {
     source: resolved.source,
     resolvedVersion: resolved.source.version,
     integrity: resolved.integrity,
     declaredBy,
   };
+  if (resolved.transitiveDeps.length > 0) {
+    entry.transitives = resolved.transitiveDeps.map(toTransitiveEntry);
+  }
+  return entry;
+}
+
+/**
+ * Recursively project a resolved transitive dependency into a lockfile
+ * `TransitiveEntry`. `declaredBy` is intentionally omitted — only
+ * user-declared top-level deps carry that field. Empty transitive arrays
+ * are omitted to keep lockfile diffs clean.
+ */
+function toTransitiveEntry(resolved: ResolvedDependency): TransitiveEntry {
+  const entry: TransitiveEntry = {
+    source: resolved.source,
+    resolvedVersion: resolved.source.version,
+    integrity: resolved.integrity,
+  };
+  if (resolved.transitiveDeps.length > 0) {
+    entry.transitives = resolved.transitiveDeps.map(toTransitiveEntry);
+  }
+  return entry;
 }
 
 /**

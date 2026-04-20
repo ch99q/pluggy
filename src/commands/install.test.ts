@@ -194,6 +194,109 @@ describe("doInstall: no plugin argument", () => {
   test("errors when no project is found at or above cwd", async () => {
     await expect(doInstall({ cwd: dir })).rejects.toThrow(/no pluggy project found/);
   });
+
+  test("persists the full transitive closure when the resolver returns one", async () => {
+    await writeFile(
+      join(dir, "project.json"),
+      JSON.stringify({
+        name: "demo",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: {
+          "paper-api": {
+            source: "maven:io.papermc.paper:paper-api",
+            version: "1.21.8-R0.1-SNAPSHOT",
+          },
+        },
+      }),
+    );
+
+    mockedResolveDependency.mockImplementation(async (source) =>
+      makeResolved({
+        source,
+        integrity: "sha256-paper",
+        transitiveDeps: [
+          makeResolved({
+            source: {
+              kind: "maven",
+              groupId: "net.kyori",
+              artifactId: "adventure-api",
+              version: "4.14.0",
+            },
+            integrity: "sha256-adv",
+            transitiveDeps: [
+              makeResolved({
+                source: {
+                  kind: "maven",
+                  groupId: "net.kyori",
+                  artifactId: "examination-api",
+                  version: "1.3.0",
+                },
+                integrity: "sha256-exam",
+                transitiveDeps: [],
+              }),
+            ],
+          }),
+          makeResolved({
+            source: {
+              kind: "maven",
+              groupId: "com.google.guava",
+              artifactId: "guava",
+              version: "32.1.2",
+            },
+            integrity: "sha256-guava",
+            transitiveDeps: [],
+          }),
+        ],
+      }),
+    );
+
+    await doInstall({ cwd: dir });
+
+    const lock = readLock(dir);
+    const top = lock?.entries["paper-api"];
+    expect(top).toBeDefined();
+    expect(top?.transitives).toHaveLength(2);
+
+    const adv = top?.transitives?.find(
+      (t) => t.source.kind === "maven" && t.source.artifactId === "adventure-api",
+    );
+    expect(adv).toBeDefined();
+    expect(adv?.resolvedVersion).toBe("4.14.0");
+    expect(adv?.integrity).toBe("sha256-adv");
+    expect(adv?.transitives).toHaveLength(1);
+    expect(adv?.transitives?.[0].resolvedVersion).toBe("1.3.0");
+    // Leaves omit the field rather than emitting [].
+    expect(adv?.transitives?.[0].transitives).toBeUndefined();
+
+    const guava = top?.transitives?.find(
+      (t) => t.source.kind === "maven" && t.source.artifactId === "guava",
+    );
+    expect(guava?.transitives).toBeUndefined();
+  });
+
+  test("omits the transitives field entirely when the resolver returns no children", async () => {
+    await writeFile(
+      join(dir, "project.json"),
+      JSON.stringify({
+        name: "demo",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: { worldedit: "7.3.15" },
+      }),
+    );
+
+    mockedResolveDependency.mockImplementation(async (source) =>
+      makeResolved({ source, integrity: "sha256-abc", transitiveDeps: [] }),
+    );
+
+    await doInstall({ cwd: dir });
+    const lock = readLock(dir);
+    expect(lock?.entries.worldedit).toBeDefined();
+    expect(lock?.entries.worldedit.transitives).toBeUndefined();
+  });
 });
 
 describe("doInstall: with a plugin argument", () => {

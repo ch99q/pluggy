@@ -18,6 +18,24 @@ export interface LockfileEntry {
   integrity: string;
   /** Workspace names that declared this dependency. */
   declaredBy: string[];
+  /**
+   * Direct transitive closure of this dependency, captured inline. Each
+   * child entry holds its own children, so the full tree is readable
+   * without cross-entry lookups. Omitted when there are no transitives.
+   */
+  transitives?: TransitiveEntry[];
+}
+
+/**
+ * Entry for a transitive dependency nested under a top-level
+ * `LockfileEntry`. Mirrors the top-level shape minus `declaredBy`, which
+ * is only meaningful for user-declared deps.
+ */
+export interface TransitiveEntry {
+  source: ResolvedSource;
+  resolvedVersion: string;
+  integrity: string;
+  transitives?: TransitiveEntry[];
 }
 
 export interface Lockfile {
@@ -168,12 +186,66 @@ function validateEntry(raw: unknown, key: string, path: string): LockfileEntry {
 
   const source = validateResolvedSource(entry.source, key, path);
 
-  return {
+  const result: LockfileEntry = {
     source,
     resolvedVersion: entry.resolvedVersion,
     integrity: entry.integrity,
     declaredBy: entry.declaredBy as string[],
   };
+
+  if (entry.transitives !== undefined) {
+    result.transitives = validateTransitives(entry.transitives, key, path);
+  }
+
+  return result;
+}
+
+/**
+ * Recursively validate a `transitives` array. Each child entry mirrors
+ * the parent's shape minus `declaredBy`. Missing `transitives` is allowed
+ * (leaf) — an empty array is also tolerated on read but install callers
+ * must not emit one (omit the field instead).
+ */
+function validateTransitives(raw: unknown, key: string, path: string): TransitiveEntry[] {
+  if (!Array.isArray(raw)) {
+    throw new Error(`Invalid lockfile entry "${key}" at ${path}: "transitives" must be an array`);
+  }
+  return raw.map((child, idx) =>
+    validateTransitiveEntry(child, `${key}.transitives[${idx}]`, path),
+  );
+}
+
+function validateTransitiveEntry(raw: unknown, key: string, path: string): TransitiveEntry {
+  if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Invalid lockfile entry "${key}" at ${path}: expected an object`);
+  }
+  const entry = raw as Record<string, unknown>;
+
+  if (entry.source === undefined) {
+    throw new Error(`Invalid lockfile entry "${key}" at ${path}: missing "source"`);
+  }
+  if (typeof entry.resolvedVersion !== "string") {
+    throw new Error(
+      `Invalid lockfile entry "${key}" at ${path}: "resolvedVersion" must be a string`,
+    );
+  }
+  if (typeof entry.integrity !== "string") {
+    throw new Error(`Invalid lockfile entry "${key}" at ${path}: "integrity" must be a string`);
+  }
+
+  const source = validateResolvedSource(entry.source, key, path);
+
+  const result: TransitiveEntry = {
+    source,
+    resolvedVersion: entry.resolvedVersion,
+    integrity: entry.integrity,
+  };
+
+  if (entry.transitives !== undefined) {
+    result.transitives = validateTransitives(entry.transitives, key, path);
+  }
+
+  return result;
 }
 
 /**

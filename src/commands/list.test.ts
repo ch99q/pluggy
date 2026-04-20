@@ -193,3 +193,138 @@ describe("doList — flag placeholders", () => {
     expect(result.deps).toHaveLength(1);
   });
 });
+
+describe("doList — tree surfaces lockfile transitives", () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "pluggy-list-tree-"));
+  });
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  test("populates DepEntry.children recursively from the lockfile transitives tree", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "my_plugin",
+        version: "1.0.0",
+        main: "com.example.Plugin",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: {
+          "paper-api": {
+            source: "maven:io.papermc.paper:paper-api",
+            version: "1.21.8-R0.1-SNAPSHOT",
+          },
+        },
+      }),
+    );
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          "paper-api": {
+            source: {
+              kind: "maven",
+              groupId: "io.papermc.paper",
+              artifactId: "paper-api",
+              version: "1.21.8-R0.1-SNAPSHOT",
+            },
+            resolvedVersion: "1.21.8-R0.1-SNAPSHOT",
+            integrity: "sha256-paper",
+            declaredBy: ["my_plugin"],
+            transitives: [
+              {
+                source: {
+                  kind: "maven",
+                  groupId: "net.kyori",
+                  artifactId: "adventure-api",
+                  version: "4.14.0",
+                },
+                resolvedVersion: "4.14.0",
+                integrity: "sha256-adv",
+                transitives: [
+                  {
+                    source: {
+                      kind: "maven",
+                      groupId: "net.kyori",
+                      artifactId: "examination-api",
+                      version: "1.3.0",
+                    },
+                    resolvedVersion: "1.3.0",
+                    integrity: "sha256-exam",
+                  },
+                ],
+              },
+              {
+                source: {
+                  kind: "maven",
+                  groupId: "com.google.guava",
+                  artifactId: "guava",
+                  version: "32.1.2",
+                },
+                resolvedVersion: "32.1.2",
+                integrity: "sha256-guava",
+              },
+            ],
+          },
+        },
+      }),
+    );
+
+    const result = await doList({ cwd: rootDir, tree: true, json: true });
+    expect(result.deps).toHaveLength(1);
+
+    const top = result.deps[0];
+    expect(top.name).toBe("paper-api");
+    expect(top.children).toBeDefined();
+    expect(top.children).toHaveLength(2);
+
+    const adventure = top.children!.find((c) => c.name === "net.kyori:adventure-api")!;
+    expect(adventure).toBeDefined();
+    expect(adventure.source.kind).toBe("maven");
+    expect(adventure.resolvedVersion).toBe("4.14.0");
+    expect(adventure.declaredBy).toEqual([]);
+    expect(adventure.children).toHaveLength(1);
+    expect(adventure.children![0].name).toBe("net.kyori:examination-api");
+    expect(adventure.children![0].resolvedVersion).toBe("1.3.0");
+    expect(adventure.children![0].children).toBeUndefined();
+
+    const guava = top.children!.find((c) => c.name === "com.google.guava:guava")!;
+    expect(guava).toBeDefined();
+    expect(guava.children).toBeUndefined();
+  });
+
+  test("leaves children undefined when lockfile entry has no transitives", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "my_plugin",
+        version: "1.0.0",
+        main: "com.example.Plugin",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+        dependencies: { worldedit: "7.3.15" },
+      }),
+    );
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          worldedit: {
+            source: { kind: "modrinth", slug: "worldedit", version: "7.3.15" },
+            resolvedVersion: "7.3.15",
+            integrity: "sha256-abc",
+            declaredBy: ["my_plugin"],
+          },
+        },
+      }),
+    );
+
+    const result = await doList({ cwd: rootDir, tree: true, json: true });
+    expect(result.deps).toHaveLength(1);
+    expect(result.deps[0].children).toBeUndefined();
+  });
+});

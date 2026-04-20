@@ -3,7 +3,7 @@ import process from "node:process";
 import { Command } from "commander";
 
 import { bold, dim, log, yellow } from "../logging.ts";
-import { readLock } from "../lockfile.ts";
+import { readLock, type TransitiveEntry } from "../lockfile.ts";
 import type { Dependency, Registry, ResolvedProject } from "../project.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { parseSource, type ResolvedSource } from "../source.ts";
@@ -35,6 +35,12 @@ export interface DepEntry {
   latestVersion?: string | null;
   /** True when `latestVersion` is known and differs from `resolvedVersion`. */
   outdated?: boolean;
+  /**
+   * Transitive children sourced from the lockfile. Populated recursively
+   * for `--tree` rendering and for JSON output consumers. Leaf deps omit
+   * the field entirely.
+   */
+  children?: DepEntry[];
 }
 
 export interface RegistryEntry {
@@ -85,14 +91,18 @@ export async function doList(options: ListOptions): Promise<ListResult> {
           existing.declaredBy.push(declaringName);
         }
       } else {
-        agg.set(name, {
+        const entry: DepEntry = {
           name,
           source,
           declaredVersion,
           resolvedVersion,
           integrity,
           declaredBy: [declaringName],
-        });
+        };
+        if (lockEntry?.transitives !== undefined && lockEntry.transitives.length > 0) {
+          entry.children = lockEntry.transitives.map(transitiveToDepEntry);
+        }
+        agg.set(name, entry);
       }
     }
   }
@@ -193,6 +203,51 @@ function selectTargets(
   }));
 }
 
+/**
+ * Project a `TransitiveEntry` from the lockfile into a child `DepEntry`
+ * suitable for `--tree` rendering and JSON output. Recurses into nested
+ * transitives so the full subtree is materialized.
+ *
+ * Transitives aren't user-declared, so `declaredBy` is empty. The
+ * `declaredVersion` field has no meaningful value for a transitive — we
+ * reuse `resolvedVersion` so consumers don't have to special-case a
+ * nullable field.
+ */
+function transitiveToDepEntry(entry: TransitiveEntry): DepEntry {
+  const dep: DepEntry = {
+    name: depNameFromSource(entry.source),
+    source: entry.source,
+    declaredVersion: entry.resolvedVersion,
+    resolvedVersion: entry.resolvedVersion,
+    integrity: entry.integrity,
+    declaredBy: [],
+  };
+  if (entry.transitives !== undefined && entry.transitives.length > 0) {
+    dep.children = entry.transitives.map(transitiveToDepEntry);
+  }
+  return dep;
+}
+
+/**
+ * Derive a human-readable dep name from a `ResolvedSource`. Mirrors
+ * `pickDepName` in `install.ts` but lives here to keep the list/install
+ * seams independent.
+ */
+function depNameFromSource(source: ResolvedSource): string {
+  switch (source.kind) {
+    case "modrinth":
+      return source.slug;
+    case "maven":
+      return `${source.groupId}:${source.artifactId}`;
+    case "workspace":
+      return source.name;
+    case "file": {
+      const base = source.path.replace(/\\/g, "/").split("/").pop() ?? source.path;
+      return base.replace(/\.jar$/i, "") || source.path;
+    }
+  }
+}
+
 function normalizeDependencySource(name: string, raw: string | Dependency): ResolvedSource {
   // Short-form `"foo": "1.2.3"` is sugar for `modrinth:<name>`.
   if (typeof raw === "string") {
@@ -253,10 +308,18 @@ function printHumanList(result: ListResult, outdatedMode: boolean): void {
 }
 
 /**
- * Render the dep list with tree-draw characters. Maven transitive closures
- * aren't persisted in the lockfile yet, so each declared dep is shown as a
- * leaf without children; the signature stays the same once transitive
- * tracking lands and child rendering can slot in.
+ * Render the dep list with tree-draw characters. Top-level deps render
+ * with their transitive closure (if the lockfile tracks one) using the
+ * same glyph conventions as `tree(1)`:
+ *
+ * - `├──` / `└──` mark the branch at the current level
+ * - `│   ` / `    ` continue the indentation when descending
+ *
+ * `--outdated` applies to top-level entries only — transitive outdated
+ * checking is a future exercise (would require per-kind latest-version
+ * queries through the closure; for now the semantics are: "show me my
+ * declared deps that need updates", and transitives come along for the
+ * ride when their parent is listed).
  */
 function printTreeList(result: ListResult, outdatedMode: boolean): void {
   log.info(bold(`${result.scope}: ${result.target}`));
@@ -269,15 +332,7 @@ function printTreeList(result: ListResult, outdatedMode: boolean): void {
     for (let i = 0; i < result.deps.length; i++) {
       const dep = result.deps[i];
       const last = i === result.deps.length - 1;
-      const branch = last ? "└──" : "├──";
-      const resolved = dep.resolvedVersion ?? dim("(unresolved)");
-      const update =
-        dep.outdated === true && dep.latestVersion !== null && dep.latestVersion !== undefined
-          ? `  ${yellow(`→ ${dep.latestVersion}`)}`
-          : "";
-      log.info(
-        `  ${dim(branch)} ${dep.name}  ${dim(`@${dep.declaredVersion} → ${resolved}`)}${update}  ${dim(describeSource(dep.source))}`,
-      );
+      renderDepNode(dep, "  ", last, /* topLevel */ true);
     }
   }
   log.info("");
@@ -292,6 +347,33 @@ function printTreeList(result: ListResult, outdatedMode: boolean): void {
       const auth = reg.authenticated ? dim(" [authenticated]") : "";
       log.info(`  ${dim(branch)} ${reg.url}${auth}`);
     }
+  }
+}
+
+/**
+ * Render one node of the dep tree and recurse into its children. `prefix`
+ * carries the cumulative indentation from ancestors (a mix of `│   ` for
+ * open ancestors and `    ` for closed ones). `last` toggles the leaf
+ * glyph.
+ */
+function renderDepNode(dep: DepEntry, prefix: string, last: boolean, topLevel: boolean): void {
+  const branch = last ? "└──" : "├──";
+  const resolved = dep.resolvedVersion ?? dim("(unresolved)");
+  const update =
+    topLevel &&
+    dep.outdated === true &&
+    dep.latestVersion !== null &&
+    dep.latestVersion !== undefined
+      ? `  ${yellow(`→ ${dep.latestVersion}`)}`
+      : "";
+  log.info(
+    `${prefix}${dim(branch)} ${dep.name}  ${dim(`@${dep.declaredVersion} → ${resolved}`)}${update}  ${dim(describeSource(dep.source))}`,
+  );
+  const children = dep.children ?? [];
+  if (children.length === 0) return;
+  const childPrefix = `${prefix}${last ? "    " : "│   "}`;
+  for (let i = 0; i < children.length; i++) {
+    renderDepNode(children[i], childPrefix, i === children.length - 1, /* topLevel */ false);
   }
 }
 
