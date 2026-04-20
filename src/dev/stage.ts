@@ -1,14 +1,119 @@
+/**
+ * Stage `<project>/dev/`: link the server jar, write `eula.txt`, render
+ * `server.properties` from the project's `dev.serverProperties`, and honour
+ * `clean` / `freshWorld` semantics (§2.11).
+ *
+ * Text files are always written with LF line endings (§3.8).
+ */
+
+import { existsSync } from "node:fs";
+import { mkdir, readdir, rm } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import process from "node:process";
+
+import { linkOrCopy, writeFileLF } from "../portable.ts";
 import type { ResolvedProject } from "../project.ts";
+
+export interface StageDevOptions {
+  /** Wipe the entire `dev/` dir before staging. */
+  clean?: boolean;
+  /** Keep `dev/` but nuke every `dev/world*` subdir. */
+  freshWorld?: boolean;
+  /**
+   * Optional override for `server-port` in `server.properties`. Otherwise
+   * inherited from `project.dev.port`, falling back to 25565.
+   */
+  port?: number;
+  /** Force online mode one way or another. Overrides `project.dev.onlineMode`. */
+  onlineMode?: boolean;
+}
+
+const EULA_HEADER =
+  "# EULA auto-accepted by pluggy on your behalf. Set PLUGGY_DEV_NO_EULA=1 to manage this file yourself.\n" +
+  "# See https://account.mojang.com/documents/minecraft_eula\n";
 
 /**
  * Prepare `<project>/dev/`: link the server jar, write `eula.txt`, render
- * `server.properties` from the project's `dev.serverProperties`. Returns
- * the absolute path to the staged dev directory.
+ * `server.properties`. Returns the absolute path to the staged dev directory.
  */
-export function stageDev(
-  _project: ResolvedProject,
-  _platformJarPath: string,
-  _opts: { clean?: boolean; freshWorld?: boolean },
+export async function stageDev(
+  project: ResolvedProject,
+  platformJarPath: string,
+  opts: StageDevOptions,
 ): Promise<string> {
-  throw new Error("not implemented: stageDev");
+  const devDir = resolve(project.rootDir, "dev");
+
+  if (opts.clean === true) {
+    await rm(devDir, { recursive: true, force: true });
+  } else if (opts.freshWorld === true && existsSync(devDir)) {
+    const entries = await readdir(devDir, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory() && entry.name.startsWith("world")) {
+        await rm(join(devDir, entry.name), { recursive: true, force: true });
+      }
+    }
+  }
+
+  await mkdir(devDir, { recursive: true });
+
+  // 1. Link the platform server jar as `dev/server.jar`.
+  const serverJar = join(devDir, "server.jar");
+  await linkOrCopy(platformJarPath, serverJar);
+
+  // 2. Write eula.txt unless the user opted out.
+  if (process.env.PLUGGY_DEV_NO_EULA !== "1") {
+    await writeFileLF(join(devDir, "eula.txt"), `${EULA_HEADER}eula=true\n`);
+  }
+
+  // 3. Render server.properties from project.dev.serverProperties + defaults.
+  const serverProperties = renderServerProperties(project, opts);
+  await writeFileLF(join(devDir, "server.properties"), serverProperties);
+
+  return devDir;
+}
+
+/**
+ * Merge user-provided `dev.serverProperties` with pluggy defaults. User-set
+ * keys always win; defaults only fill unset keys.
+ *
+ * Emitted in stable key order: defaults first, then extra user keys in
+ * declaration order. Values are stringified with no escaping (Minecraft's
+ * properties reader is forgiving, and our defaults don't contain any of the
+ * characters that would require escaping).
+ */
+function renderServerProperties(project: ResolvedProject, opts: StageDevOptions): string {
+  const dev = project.dev ?? {};
+  const userProps = dev.serverProperties ?? {};
+  const hasUser = (k: string): boolean => Object.prototype.hasOwnProperty.call(userProps, k);
+
+  const online = opts.onlineMode !== undefined ? opts.onlineMode : (dev.onlineMode ?? false);
+  const port = opts.port ?? dev.port ?? 25565;
+  const motd = `${project.name} dev`;
+
+  const defaults: Array<[string, string | number | boolean]> = [
+    ["motd", motd],
+    ["online-mode", online],
+    ["server-port", port],
+  ];
+
+  // Build the effective map: defaults first, then overlay every user key. This
+  // preserves default ordering for the keys the user didn't override, and
+  // appends any new keys at the end in declaration order.
+  const effective = new Map<string, string | number | boolean>();
+  for (const [key, value] of defaults) {
+    effective.set(key, hasUser(key) ? (userProps[key] as string | number | boolean) : value);
+  }
+  for (const [key, value] of Object.entries(userProps)) {
+    if (!effective.has(key)) effective.set(key, value);
+  }
+
+  const out: string[] = [];
+  for (const [key, value] of effective) {
+    out.push(`${key}=${stringifyProp(value)}`);
+  }
+  return `${out.join("\n")}\n`;
+}
+
+function stringifyProp(v: string | number | boolean): string {
+  return String(v);
 }
