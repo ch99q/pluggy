@@ -21,11 +21,6 @@ term.
 | `--platform <id>`    | none    | Filter by platform tag (`paper`, `spigot`, ...). |
 | `--version <semver>` | none    | Filter by Minecraft version.                     |
 
-There's no `--beta` flag here. Modrinth's `/v2/search` has no project-level
-pre-release filter, so search results never differ between stable and
-pre-release modes. Pre-release filtering happens later when [`install`](./install.md)
-or [`info`](./info.md) resolves a specific version.
-
 ## How it queries
 
 pluggy hits `GET /v2/search` with facets:

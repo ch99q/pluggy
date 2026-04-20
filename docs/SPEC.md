@@ -497,8 +497,6 @@ Not workspace-aware — operates on the passed identifier.
 
 Global command; not workspace-aware. Only searches Modrinth (Maven has no search API; local file lookups are not meaningful across a registry).
 
-**No `--beta` here.** Modrinth's `/v2/search` endpoint has no project-level pre-release facet, so search results never differ between stable and pre-release modes. Pre-release filtering happens later, at `install` / `info` time, when a specific version is resolved (§3.7).
-
 ### 2.8 `list` — installed deps and registries ⚠️
 
 Aliases: `ls`.
