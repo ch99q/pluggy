@@ -7,268 +7,124 @@
                |___/ |___/ |___/
 ```
 
-# Pluggy
+# pluggy
 
-A command-line tool for Minecraft plugin development that streamlines project initialization, dependency management, and build processes.
+A CLI for Minecraft plugin development. Scaffold a project, pull
+dependencies from Modrinth / Maven / local jars / sibling workspaces,
+build a real plugin jar with the full Maven transitive closure on the
+classpath, and boot a live Paper / Spigot / Velocity server with a
+file-watcher that rebuilds on save.
 
-## Overview
+Ships as a single native binary — no Gradle wrapper, no `pom.xml`, no
+JVM-based toolchain to install. One JSON file per project, one lockfile
+per repo.
 
-Pluggy is built around the Modrinth ecosystem, providing a cohesive workflow from project initialization through dependency resolution to final JAR packaging. Rather than being just another build tool, Pluggy leverages Modrinth as the primary source for plugin discovery, dependency management, and version compatibility, making modern Minecraft plugin development faster and more reliable.
+## Install
 
-## Key Features
-
-- **Project Scaffolding**: Generates complete project structure with proper Java package hierarchy
-- **Modrinth**: Direct plugin search, installation, and version management from Modrinth
-- **Build Automation**: Handles compilation, resource bundling, and JAR creation
-- **Dependency Shading**: Configurable dependency inclusion/exclusion patterns
-- **IDE Integration**: Automatic Eclipse project file generation with proper classpaths
-- **Platform Compatibility**: Supports Paper, Bukkit, and related server implementations
-
-## Installation
-
-### Windows (PowerShell)
-
-```
-irm https://raw.githubusercontent.com/ch99q/pluggy/main/install.ps1 | iex
-```
-
-### Unix-like Systems (macOS, Linux)
-
-```
-curl -fsSL https://raw.githubusercontent.com/ch99q/pluggy/main/install.sh | bash
-```
-
-## Command Reference
-
-### Project Lifecycle
+macOS / Linux:
 
 ```bash
-# Initialize new project with interactive prompts
-pluggy init
+curl -fsSL https://github.com/ch99q/pluggy/releases/latest/download/install.sh | bash
+```
 
-# Initialize with specified parameters
-pluggy init --name my-plugin --main com.example.MyPlugin --version 1.0.0
+Windows (PowerShell):
 
-# Build project and generate JAR
+```powershell
+irm https://github.com/ch99q/pluggy/releases/latest/download/install.ps1 | iex
+```
+
+Both scripts drop the binary somewhere on your `PATH`. Verify:
+
+```bash
+pluggy -V
+```
+
+Upgrade in place any time with `pluggy upgrade`.
+
+## Quick tour
+
+```bash
+# Scaffold
+mkdir my-plugin && cd my-plugin
+pluggy init --yes --name my_plugin --main com.example.myplugin.Main
+
+# Add deps
+pluggy install worldedit                            # Modrinth
+pluggy install maven:net.kyori:adventure-api@4.17.0 # Maven
+pluggy install ./libs/proprietary.jar               # Local jar
+
+# Build
 pluggy build
+# → bin/my_plugin-1.0.0.jar
+
+# Run a live Paper server with rebuild-on-save
+pluggy dev
 ```
 
-### Dependency Management
+For the full walkthrough, read
+[docs/getting-started.md](./docs/getting-started.md).
 
-```bash
-# Install all project dependencies
-pluggy install
+## What it supports
 
-# Add specific plugin from Modrinth
-pluggy install worldedit
+- **Platforms.** paper, folia, spigot, bukkit, velocity, waterfall,
+  travertine. Each is a first-class provider with its own descriptor
+  family and Maven API coordinate.
+- **Dependency sources.** Modrinth slugs, Maven coordinates, local jars
+  (content-addressed by SHA-256), and sibling workspaces.
+- **Transitive resolution.** The Maven resolver parses POMs, folds in
+  `<dependencyManagement>` BOM imports, and handles `-SNAPSHOT` versions
+  by fetching per-version metadata. Full closure on the classpath.
+- **Workspaces.** Monorepo layouts with inheritance, topological build
+  ordering, and `workspace:` source kind for sibling deps.
+- **Cross-platform.** macOS, Linux, Windows — identical behaviour, same
+  native binary format (arm64 + amd64 where available).
+- **IDE integration.** VS Code, Eclipse, IntelliJ. Set `"ide": "..."` in
+  `project.json` and builds scaffold the right project files.
+- **Reproducible.** Every resolved dep carries a SHA-256 integrity
+  hash. `pluggy.lock` is sorted, LF-terminated, atomic-written.
 
-# Add specific version
-pluggy install placeholderapi@2.11.6
+## Commands at a glance
 
-# Add local JAR file
-pluggy install ./libs/custom-library.jar
+| Command                      | Summary                                            |
+| ---------------------------- | -------------------------------------------------- |
+| `pluggy init`                | Scaffold a new project.                            |
+| `pluggy install [plugin]`    | Add a dep or reconcile the lockfile.               |
+| `pluggy remove <plugin>`     | Drop a dep (and its cached jar).                   |
+| `pluggy info <plugin>`       | Inspect a source.                                  |
+| `pluggy search <query>`      | Query Modrinth.                                    |
+| `pluggy list`                | Show declared deps, resolved versions, registries. |
+| `pluggy build`               | Compile → resources → descriptor → shade → jar.    |
+| `pluggy dev`                 | Live server with rebuild-on-save.                  |
+| `pluggy doctor`              | Validate environment and every workspace.          |
+| `pluggy upgrade`             | Replace the binary with the latest release.        |
+| `pluggy completions <shell>` | Print a shell completion script.                   |
 
-# Add Maven dependency
-pluggy install maven:net.kyori:adventure-api@4.22.0
+Every command is documented in [docs/commands/](./docs/commands/).
 
-# Include pre-release versions in search
-pluggy install some-plugin --beta
+## Documentation
 
-# Remove dependency
-pluggy remove worldedit
-```
-
-### Information and Discovery
-
-```bash
-# Search Modrinth repository
-pluggy search "world management"
-
-# Get detailed plugin information
-pluggy info worldedit
-
-# Show specific version details
-pluggy info worldedit@7.3.15
-```
-
-### Global Options
-
-- `--verbose, -v` - Enable detailed logging output
-- `--no-color` - Disable colored terminal output
-- `--config-file <path>` - Specify alternative plugin.json location
-- `--help, -h` - Display command-specific help
-- `--version, -V` - Show Pluggy version information
-
-## Project Configuration
-
-Pluggy projects are configured via `plugin.json` in the project root:
-
-```json
-{
-  "name": "example-plugin",
-  "version": "1.0.0",
-  "main": "com.example.ExamplePlugin",
-  "description": "An example Minecraft plugin",
-  "authors": ["Developer Name"],
-  "resources": {
-    "config.yml": "./resources/config.yml",
-    "plugin.yml": "./resources/plugin.yml"
-  },
-  "dependencies": {
-    "worldedit": "7.3.15",
-    "placeholderapi": "2.11.6"
-  },
-  "shading": {
-    "some-library": {
-      "include": ["com/library/core/**"],
-      "exclude": ["com/library/unused/**"]
-    }
-  },
-  "compatibility": {
-    "versions": ["1.21.7", "1.21.3"],
-    "platforms": ["paper", "bukkit"]
-  },
-  "registries": ["https://repo1.maven.org/maven2/"]
-}
-```
-
-### Configuration Fields
-
-- **name**: Plugin identifier (used for JAR filename and plugin.yml)
-- **version**: Plugin version (semantic versioning recommended)
-- **main**: Fully qualified main class name
-- **description**: Plugin description for plugin.yml
-- **authors**: Array of author names
-- **resources**: File mappings from plugin.yml keys to local paths
-- **dependencies**: Modrinth plugin dependencies with versions
-- **shading**: Dependency inclusion/exclusion patterns for JAR packaging
-- **compatibility**: Target Minecraft versions and server platforms
-- **registries**: Additional Maven repositories for dependency resolution
-
-## Advanced Usage
-
-### Dependency Shading
-
-Shading configuration allows fine-grained control over which dependency classes are included in the final JAR:
-
-```json
-{
-  "shading": {
-    "library-name": {
-      "include": ["com/library/api/**", "com/library/util/**"],
-      "exclude": ["com/library/internal/**"]
-    }
-  }
-}
-```
-
-Patterns use glob syntax (`**` for recursive matching, `*` for single-level wildcards).
-
-### Maven Dependencies
-
-Pluggy supports Maven-style dependencies in the format `maven:groupId:artifactId:versionId`. This allows you to include libraries from Maven Central or other configured repositories:
-
-```bash
-pluggy install maven:net.kyori:adventure-api@4.22.0
-```
-
-This will download the specified version of the library and include it in your project.
-
-```xml
-<dependency>
-  <groupId>net.kyori</groupId>
-  <artifactId>adventure-api</artifactId>
-  <version>4.22.0</version>
-</dependency>
-<repositories>
-  <repository>
-    <id>sonatype-oss-snapshots1</id>
-    <url>https://s01.oss.sonatype.org/content/repositories/snapshots/</url>
-  </repository>
-</repositories>
-```
-
-The above XML snippet would be the same as adding the following to your `plugin.json`:
-
-```json
-{
-  "registries": ["https://s01.oss.sonatype.org/content/repositories/snapshots/"]
-}
-```
-
-And then installing the dependency with:
-
-```bash
-pluggy install maven:net.kyori:adventure-api@4.22.0
-```
-
-### Local Dependencies
-
-Reference local JAR files in your project:
-
-```bash
-pluggy install ./libs/proprietary-library.jar
-```
-
-This creates a `file:` reference in plugin.json and includes the JAR in classpath generation.
-
-### Platform Compatibility
-
-Pluggy automatically downloads appropriate server JARs for compilation based on your compatibility configuration. The build system selects the most suitable platform and version combination from your specified constraints.
-
-## Build Process Details
-
-The build process performs these operations:
-
-1. **Dependency Resolution**: Downloads and caches Modrinth dependencies
-2. **Classpath Generation**: Creates Eclipse .classpath with all dependencies
-3. **Resource Processing**: Copies and processes resource files with template variable substitution
-4. **Compilation**: Invokes javac with proper classpath and source directories
-5. **JAR Assembly**: Packages compiled classes and resources into final JAR
-6. **Plugin.yml Generation**: Automatically generates plugin.yml from project configuration
-
-### Template Variables
-
-All resource files are processed with template variable substitution during build:
-
-- `$__PROJECT_NAME__$` - Project name
-- `$__PROJECT_VERSION__$` - Project version
-- `$__PROJECT_MAIN_CLASS__$` - Main class name only
-- `$__PROJECT_PACKAGE_NAME__$` - Package name without class
-- `$__PROJECT_DESCRIPTION__$` - Project description
-
-This allows you to use dynamic values in any resource file (config.yml, plugin.yml, etc.).
-
-## Development
-
-### Prerequisites
-
-- Deno 2.4.1 or later
-- Git
-
-### Building from Source
-
-```bash
-git clone https://github.com/ch99q/pluggy.git
-cd pluggy
-deno task build
-```
-
-This generates a self-contained executable at `./bin/pluggy`.
-
-### Architecture Notes
-
-Pluggy is implemented in TypeScript using Deno 2.x runtime and standard library. Key architectural decisions:
-
-- **Single binary distribution**: Compiled to native executable for each platform
-- **Zero external dependencies**: All functionality implemented using Deno standard library and JSR packages
-- **Modrinth API integration**: Direct REST API communication for plugin discovery
-- **Template-based code generation**: Parameterized file templates for project scaffolding
+- **Start here:** [docs/getting-started.md](./docs/getting-started.md)
+- **Config reference:** [docs/project-json.md](./docs/project-json.md)
+- **Dependencies:** [docs/dependencies.md](./docs/dependencies.md)
+- **Workspaces:** [docs/workspaces.md](./docs/workspaces.md)
+- **Build pipeline:** [docs/build-pipeline.md](./docs/build-pipeline.md)
+- **Dev server:** [docs/dev-server.md](./docs/dev-server.md)
+- **IDE integration:** [docs/ide.md](./docs/ide.md)
+- **Cross-platform notes:** [docs/cross-platform.md](./docs/cross-platform.md)
+- **Troubleshooting:** [docs/troubleshooting.md](./docs/troubleshooting.md)
+- **All docs:** [docs/README.md](./docs/README.md)
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, and submission guidelines.
+Source is TypeScript, organized around a commander command tree and a
+pluggable platform registry. `vp check` (format + lint + typecheck) and
+`vp test` (Vitest) validate changes. The shipped CLI binary is produced
+by `bun build --compile`.
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development loop and
+[CLAUDE.md](./CLAUDE.md) for repo conventions (cross-platform rules,
+command conventions, stub-module workflow).
 
 ## License
 
-Licensed under the MIT License. See [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](./LICENSE).

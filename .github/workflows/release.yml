@@ -97,7 +97,7 @@ jobs:
           cp artifacts/pluggy-linux-arm64/pluggy-linux-arm64 release-assets/pluggy-linux-arm64
           cp artifacts/pluggy-darwin-amd64/pluggy-darwin-amd64 release-assets/pluggy-darwin-amd64
           cp artifacts/pluggy-darwin-arm64/pluggy-darwin-arm64 release-assets/pluggy-darwin-arm64
-          cp artifacts/pluggy-windows-amd64.exe/pluggy-windows-amd64.exe release-assets/pluggy-windows-x86_64.exe
+          cp artifacts/pluggy-windows-amd64.exe/pluggy-windows-amd64.exe release-assets/pluggy-windows-amd64.exe
 
           chmod +x release-assets/pluggy-linux-* release-assets/pluggy-darwin-*
 
