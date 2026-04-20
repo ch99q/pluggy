@@ -457,7 +457,7 @@ Aliases: `rm`.
 | Arg/Flag             | Type   | Default | Notes                                                |
 | -------------------- | ------ | ------- | ---------------------------------------------------- |
 | `<plugin>`           | string | —       | Dependency name (key in `project.json:dependencies`) |
-| `--keep-file`        | bool   | false   | Leave the local/cached jar on disk 🎯                |
+| `--keep-file`        | bool   | false   | Leave the local/cached jar on disk                   |
 | `--workspace <name>` | string | —       | Target a specific workspace                          |
 | `--workspaces`       | bool   | false   | Remove from every workspace that declares it         |
 
@@ -488,13 +488,13 @@ Not workspace-aware — operates on the passed identifier.
 
 ### 2.7 `search <query>` — browse Modrinth ⚠️
 
-| Flag                 | Type   | Default | Notes                   |
-| -------------------- | ------ | ------- | ----------------------- |
-| `--size <n>`         | int    | 10      | Results per page        |
-| `--page <n>`         | int    | 0       | Zero-indexed page       |
-| `--platform <name>`  | enum   | —       | Filter by platform 🎯   |
-| `--version <semver>` | string | —       | Filter by MC version 🎯 |
-| `--beta`             | bool   | false   | Include pre-releases 🎯 |
+| Flag                 | Type   | Default | Notes                                                 |
+| -------------------- | ------ | ------- | ----------------------------------------------------- |
+| `--size <n>`         | int    | 10      | Results per page                                      |
+| `--page <n>`         | int    | 0       | Zero-indexed page                                     |
+| `--platform <name>`  | enum   | —       | Filter by platform (adds a `categories:<name>` facet) |
+| `--version <semver>` | string | —       | Filter by MC version (adds a `versions:<ver>` facet)  |
+| `--beta`             | bool   | false   | No-op at search; honored at resolve time (§3.7)       |
 
 **`--beta` limitation.** Modrinth's `/v2/search` endpoint has no project-level pre-release facet — individual versions have a `version_type`, but the search API doesn't filter on it. `--beta` is accepted for consistency but is a **no-op at search time**; it's honored later when `install` / `info` resolves a specific version. Setting it in human mode logs a warning; in `--json` mode it is silent.
 
@@ -504,12 +504,12 @@ Global command; not workspace-aware. Only searches Modrinth (Maven has no search
 
 Aliases: `ls`.
 
-| Flag                 | Type   | Default   | Notes                                               |
-| -------------------- | ------ | --------- | --------------------------------------------------- |
-| `--tree`             | bool   | false     | Render as dependency tree (with transitive deps) 🎯 |
-| `--outdated`         | bool   | false     | Only list deps with newer versions available 🎯     |
-| `--workspace <name>` | string | —         | Show a specific workspace                           |
-| `--workspaces`       | bool   | see below | Aggregated view across all workspaces               |
+| Flag                 | Type   | Default   | Notes                                                                               |
+| -------------------- | ------ | --------- | ----------------------------------------------------------------------------------- |
+| `--tree`             | bool   | false     | Render with tree-draw characters (transitive children 🎯 when lockfile tracks them) |
+| `--outdated`         | bool   | false     | Only list deps with newer stable versions on Modrinth                               |
+| `--workspace <name>` | string | —         | Show a specific workspace                                                           |
+| `--workspaces`       | bool   | see below | Aggregated view across all workspaces                                               |
 
 **Default scope:** at a root with workspaces → aggregated. In a workspace or standalone → current project.
 
@@ -521,13 +521,13 @@ Aliases: `ls`.
 
 Aliases: `b`.
 
-| Flag                 | Type   | Default                      | Notes                            |
-| -------------------- | ------ | ---------------------------- | -------------------------------- |
-| `--output <path>`    | string | `./bin/<name>-<version>.jar` | Output jar path 🎯               |
-| `--clean`            | bool   | false                        | Wipe build cache first 🎯        |
-| `--skip-classpath`   | bool   | false                        | Don't regenerate `.classpath` 🎯 |
-| `--workspace <name>` | string | —                            | Build a single workspace         |
-| `--workspaces`       | bool   | see below                    | Explicit "all workspaces"        |
+| Flag                 | Type   | Default                      | Notes                             |
+| -------------------- | ------ | ---------------------------- | --------------------------------- |
+| `--output <path>`    | string | `./bin/<name>-<version>.jar` | Output jar path                   |
+| `--clean`            | bool   | false                        | Wipe staging before building      |
+| `--skip-classpath`   | bool   | false                        | Skip IDE scaffolding (§1.2 `ide`) |
+| `--workspace <name>` | string | —                            | Build a single workspace          |
+| `--workspaces`       | bool   | see below                    | Explicit "all workspaces"         |
 
 **Default scope:** at a root with workspaces → build all in topological order. In a workspace or standalone → build that project.
 
@@ -772,7 +772,7 @@ Subdirectories:
 
 - `versions/` — server jars (Paper, Folia, Velocity, Waterfall, Travertine, compiled Spigot/Bukkit).
 - `BuildTools/` — Spigot BuildTools workspace (the jar itself plus its checkout caches).
-- `dependencies/` — 🎯 Modrinth/Maven-resolved plugin jars, content-addressed by integrity hash.
+- `dependencies/` — Modrinth (`modrinth/<slug>/<version>.jar`), Maven (`maven/<groupId>/<artifactId>/<version>.jar`), and file (`file/<sha256>.jar` content-addressed) caches.
 
 ### 3.5 Lockfile
 
