@@ -55,10 +55,9 @@ describe("resolveMaven", () => {
     const bytes = new Uint8Array([0xca, 0xfe, 0xba, 0xbe]);
     const fetchMock = vi.fn(async (url: string | URL): Promise<Response> => {
       const s = String(url);
-      expect(s).toBe(
-        "https://repo1.example.com/net/kyori/adventure-api/4.22.0/adventure-api-4.22.0.jar",
-      );
-      return okBinary(bytes);
+      if (s.endsWith(".jar")) return okBinary(bytes);
+      // No POM published → no transitives, which is fine.
+      return errorResponse(404, "Not Found");
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -69,7 +68,11 @@ describe("resolveMaven", () => {
 
     const got = await resolveMaven("net.kyori", "adventure-api", "4.22.0", ctx);
 
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const jarCalls = fetchMock.mock.calls.filter(([u]) => String(u).endsWith(".jar"));
+    expect(jarCalls).toHaveLength(1);
+    expect(String(jarCalls[0][0])).toBe(
+      "https://repo1.example.com/net/kyori/adventure-api/4.22.0/adventure-api-4.22.0.jar",
+    );
     expect(got.source).toEqual({
       kind: "maven",
       groupId: "net.kyori",
@@ -92,8 +95,12 @@ describe("resolveMaven", () => {
     const fetchMock = vi.fn(async (url: string | URL): Promise<Response> => {
       const s = String(url);
       calls.push(s);
-      if (s.startsWith("https://repo1.example.com")) return errorResponse(404, "Not Found");
-      return okBinary(bytes);
+      if (s.startsWith("https://repo1.example.com") && s.endsWith(".jar")) {
+        return errorResponse(404, "Not Found");
+      }
+      if (s.endsWith(".jar")) return okBinary(bytes);
+      // POM lookups 404 → empty transitives.
+      return errorResponse(404, "Not Found");
     });
     vi.stubGlobal("fetch", fetchMock);
 
@@ -104,9 +111,10 @@ describe("resolveMaven", () => {
 
     const got = await resolveMaven("com.foo", "bar", "1.0.0", ctx);
 
-    expect(calls).toHaveLength(2);
-    expect(calls[0]).toContain("repo1.example.com");
-    expect(calls[1]).toContain("repo2.example.com");
+    const jarCalls = calls.filter((c) => c.endsWith(".jar"));
+    expect(jarCalls).toHaveLength(2);
+    expect(jarCalls[0]).toContain("repo1.example.com");
+    expect(jarCalls[1]).toContain("repo2.example.com");
     const expectedHex = createHash("sha256").update(bytes).digest("hex");
     expect(got.integrity).toBe(`sha256-${expectedHex}`);
   });
@@ -123,7 +131,6 @@ describe("resolveMaven", () => {
     await expect(resolveMaven("com.foo", "bar", "1.0.0", ctx)).rejects.toThrow(
       /com\.foo:bar:1\.0\.0.*a\.example\.com.*404.*b\.example\.com.*404/s,
     );
-    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   test("throws when no registries are configured", async () => {
@@ -131,6 +138,49 @@ describe("resolveMaven", () => {
     await expect(resolveMaven("com.foo", "bar", "1.0.0", ctx)).rejects.toThrow(
       /no registries.*com\.foo:bar:1\.0\.0/s,
     );
+  });
+
+  test("resolves a SNAPSHOT version via maven-metadata.xml and fetches the timestamped jar", async () => {
+    const bytes = new Uint8Array([0x11, 0x22, 0x33]);
+    const metadata = `<?xml version="1.0" encoding="UTF-8"?>
+<metadata>
+  <versioning>
+    <snapshotVersions>
+      <snapshotVersion>
+        <classifier>sources</classifier>
+        <extension>jar</extension>
+        <value>1.21.8-R0.1-20250930.141227-5</value>
+      </snapshotVersion>
+      <snapshotVersion>
+        <extension>jar</extension>
+        <value>1.21.8-R0.1-20250930.141227-5</value>
+      </snapshotVersion>
+    </snapshotVersions>
+  </versioning>
+</metadata>`;
+
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string | URL): Promise<Response> => {
+        const s = String(url);
+        calls.push(s);
+        if (s.endsWith("/maven-metadata.xml")) return new Response(metadata, { status: 200 });
+        if (s.endsWith("folia-api-1.21.8-R0.1-20250930.141227-5.jar")) return okBinary(bytes);
+        return errorResponse(404, "Not Found");
+      }),
+    );
+
+    const ctx: ResolveContext = {
+      ...baseCtx,
+      registries: ["https://repo.papermc.io/repository/maven-public/"],
+    };
+    const got = await resolveMaven("dev.folia", "folia-api", "1.21.8-R0.1-SNAPSHOT", ctx);
+
+    expect(calls[0]).toMatch(/maven-metadata\.xml$/);
+    expect(calls[1]).toMatch(/folia-api-1\.21\.8-R0\.1-20250930\.141227-5\.jar$/);
+    const expectedHex = createHash("sha256").update(bytes).digest("hex");
+    expect(got.integrity).toBe(`sha256-${expectedHex}`);
   });
 
   test("computes SHA-256 over the downloaded bytes", async () => {

@@ -20,10 +20,13 @@ import "./platform/mod.ts";
 
 const CLI_VERSION = "0.0.0";
 
+// Version flag limited to `-V` so subcommands can own `--version <semver>`
+// (e.g. `pluggy init --version 1.21.8`) without colliding with the CLI's own
+// version-print shortcut.
 const program = new Command()
   .name("pluggy")
   .description("A CLI for developing Minecraft plugins.")
-  .version(CLI_VERSION)
+  .version(CLI_VERSION, "-V", "Print pluggy's version and exit.")
   .option("-v, --verbose", "Enable verbose output.")
   .option("-p, --project <path>", "Path to a custom project file.")
   .option("--json", "Output results as JSON.")

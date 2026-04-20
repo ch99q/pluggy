@@ -75,7 +75,8 @@ export async function buildProject(
   const resolvedDeps = await resolveDeclaredDependencies(project, registries);
   const platformApiJars = await resolvePlatformApiJars(project, registries);
 
-  const classpath = [...resolvedDeps.map((d) => d.jarPath), ...platformApiJars];
+  const depJars = resolvedDeps.flatMap(flattenJarPaths);
+  const classpath = dedupePreservingOrder([...depJars, ...platformApiJars]);
 
   await stageResources(project, stagingDir);
 
@@ -183,9 +184,29 @@ async function resolvePlatformApiJars(
       force: false,
       registries,
     });
-    jars.push(resolved.jarPath);
+    jars.push(...flattenJarPaths(resolved));
   }
-  return jars;
+  return dedupePreservingOrder(jars);
+}
+
+/** Flatten `dep.jarPath` plus every transitive's jarPath into a single list. */
+function flattenJarPaths(dep: ResolvedDependency): string[] {
+  const out: string[] = [dep.jarPath];
+  for (const t of dep.transitiveDeps) {
+    out.push(...flattenJarPaths(t));
+  }
+  return out;
+}
+
+function dedupePreservingOrder(paths: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const p of paths) {
+    if (seen.has(p)) continue;
+    seen.add(p);
+    out.push(p);
+  }
+  return out;
 }
 
 function uniqueInOrder(values: string[]): string[] {
