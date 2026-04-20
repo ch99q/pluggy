@@ -1,7 +1,7 @@
 /**
  * Shading — selectively copy entries from dependency jars into the staging
  * directory per the project's `shading` rules. A dep without a rule is not
- * shaded (§1.6).
+ * shaded.
  */
 
 import { existsSync } from "node:fs";

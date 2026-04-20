@@ -1,6 +1,6 @@
 /**
  * Source-string parser for `project.json` dependency sources and CLI
- * install-identifier forms. Grammar: docs/SPEC.md §6.
+ * install-identifier forms.
  */
 
 /** Tagged union of every dependency source kind the resolver understands. */

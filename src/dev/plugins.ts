@@ -2,7 +2,7 @@
  * Runtime plugin detection + `dev/plugins/` population. A dependency is a
  * *runtime plugin* iff its jar contains the primary platform's descriptor
  * file (e.g. `plugin.yml`); compile-time libraries are excluded from
- * `dev/plugins/` but stay on the build classpath. See §2.11.
+ * `dev/plugins/` but stay on the build classpath.
  */
 
 import { mkdir } from "node:fs/promises";

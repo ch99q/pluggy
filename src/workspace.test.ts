@@ -1,6 +1,4 @@
-/**
- * Contract tests for src/workspace.ts. See docs/SPEC.md §1.8.
- */
+/** Contract tests for workspace discovery and graph ops. */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

@@ -1,6 +1,6 @@
 /**
  * Cross-platform helpers. Every function here must behave identically on
- * macOS, Linux, and Windows. See docs/SPEC.md §3.8.
+ * macOS, Linux, and Windows.
  */
 
 import type { ChildProcess } from "node:child_process";

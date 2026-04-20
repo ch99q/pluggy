@@ -30,8 +30,8 @@ export interface DevCommandOptions {
  * Resolve the dev target, emit a startup envelope, and delegate to `runDev`.
  *
  * In `--json` mode this writes one `{status: "starting", …}` line to stdout
- * and then lets the server's stdout/stderr through unchanged (§3.1's "one
- * envelope, then raw output" pattern). Errors from `runDev` propagate.
+ * and then lets the server's stdout/stderr through unchanged (one envelope,
+ * then raw output). Errors from `runDev` propagate.
  */
 export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
   const cwd = opts.cwd ?? process.cwd();
@@ -74,7 +74,7 @@ export async function runDevCommand(opts: DevCommandOptions): Promise<void> {
 }
 
 /**
- * Pick the single workspace `dev` targets, per §2.11.
+ * Pick the single workspace `dev` targets.
  *
  * At a root with workspaces `--workspace` is required; inside a workspace it
  * must match (or be omitted); standalone projects use their root. `dev` has

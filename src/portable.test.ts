@@ -1,6 +1,4 @@
-/**
- * Contract tests for src/portable.ts. See docs/SPEC.md §3.8.
- */
+/** Contract tests for cross-platform helpers. */
 
 import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";

@@ -1,8 +1,8 @@
 /**
- * Local-file resolver. Relative paths resolve against `ctx.rootDir`
- * (SPEC §3.8). Jars are content-addressed: the SHA-256 of the bytes is
- * both the cache key and the integrity hash, so byte-identical sources
- * share a cache entry. See docs/SPEC.md §2.4.
+ * Local-file resolver. Relative paths resolve against `ctx.rootDir`.
+ * Jars are content-addressed: the SHA-256 of the bytes is both the cache
+ * key and the integrity hash, so byte-identical sources share a cache
+ * entry.
  */
 
 import { createHash } from "node:crypto";

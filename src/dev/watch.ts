@@ -1,7 +1,7 @@
 /**
  * File watcher for `pluggy dev`. Watches `src/`, every path referenced by
  * `project.resources`, and `project.json`. Events are coalesced by
- * `debounceMs` — a burst of saves yields one `onChange`. See §2.11.
+ * `debounceMs` — a burst of saves yields one `onChange`.
  */
 
 import { existsSync, statSync } from "node:fs";

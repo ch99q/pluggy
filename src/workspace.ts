@@ -1,5 +1,5 @@
 /**
- * Workspace discovery, inheritance, and build-order graph. See docs/SPEC.md §1.8.
+ * Workspace discovery, inheritance, and build-order graph.
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -30,8 +30,8 @@ export interface WorkspaceContext {
 /**
  * Walk up from `cwd`, resolve the repo root, and classify which workspace
  * `cwd` sits in. Each workspace's `project.json` is merged with the root's
- * inheritable fields per SPEC §1.8. Returns `undefined` when `cwd` is not
- * inside any pluggy project.
+ * inheritable fields (see `mergeInheritance`). Returns `undefined` when
+ * `cwd` is not inside any pluggy project.
  */
 export function resolveWorkspaceContext(cwd: string): WorkspaceContext | undefined {
   const startDir = resolve(cwd);
@@ -186,10 +186,10 @@ function enumerateWorkspaces(root: ResolvedProject): WorkspaceNode[] {
 }
 
 /**
- * Apply SPEC §1.8 inheritance: `compatibility`, `authors`, `description`
- * inherit from the root when the workspace hasn't declared them;
- * `registries` are merged (root first, de-duped by URL); everything else
- * (including `version`) stays workspace-local.
+ * Merge root fields into a workspace project: `compatibility`, `authors`,
+ * `description` inherit from the root when the workspace hasn't declared
+ * them; `registries` are merged (root first, de-duped by URL); everything
+ * else (including `version`) stays workspace-local.
  */
 function mergeInheritance(root: ResolvedProject, own: Project): Project {
   const merged: Project = { ...own };

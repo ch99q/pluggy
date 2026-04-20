@@ -43,7 +43,7 @@ export interface BuildCommandResult {
  * Single-target failures rethrow so the CLI's top-level handler formats them;
  * multi-workspace failures continue through remaining targets and are
  * surfaced via `exitCode === 1`. JSON mode writes the success envelope to
- * stdout and the partial-failure envelope to stderr (§3.1).
+ * stdout and the partial-failure envelope to stderr.
  */
 export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildCommandResult> {
   const cwd = opts.cwd ?? process.cwd();
@@ -141,12 +141,12 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
 }
 
 /**
- * Resolve which workspaces / projects a build call should cover, per §2.9.
+ * Resolve which workspaces / projects a build call should cover.
  *
  * At a root with workspaces, defaults to every workspace in topological
  * order; `--workspace` narrows to one. Inside a workspace, builds just that
  * workspace. Standalone projects build themselves. Throws
- * `InvalidArgumentError` on flag combinations the spec forbids.
+ * `InvalidArgumentError` on rejected flag combinations.
  */
 export function selectBuildTargets(
   context: WorkspaceContext,

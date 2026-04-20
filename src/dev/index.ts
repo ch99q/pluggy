@@ -1,6 +1,6 @@
 /**
- * Dev-server runtime — stage `dev/`, build, spawn server, watch sources.
- * Full flow in docs/SPEC.md §2.11.
+ * Dev-server runtime — stage `dev/`, build, spawn the server, watch sources,
+ * and on every debounced change rebuild + (reload | restart).
  */
 
 import { basename, join, resolve } from "node:path";

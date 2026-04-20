@@ -1,6 +1,4 @@
-/**
- * Contract tests for src/source.ts. Grammar is frozen by docs/SPEC.md §6.
- */
+/** Contract tests for the source-string parser. */
 
 import { describe, expect, test } from "vite-plus/test";
 

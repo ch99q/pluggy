@@ -1,7 +1,7 @@
 /**
  * Modrinth resolver. Fetches the version list for a slug, picks a concrete
  * version (honouring `includePrerelease`), and downloads the primary jar
- * into the user cache. See docs/SPEC.md §2.4 and §3.7.
+ * into the user cache.
  */
 
 import { createHash } from "node:crypto";

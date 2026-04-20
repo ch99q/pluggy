@@ -1,7 +1,7 @@
 /**
  * Stage `<project>/dev/`: link the server jar, write `eula.txt`, render
- * `server.properties`, and honour `clean` / `freshWorld` semantics (§2.11).
- * Text files are written LF-only (§3.8).
+ * `server.properties`, and honour `clean` / `freshWorld` semantics.
+ * Text files are written LF-only.
  */
 
 import { existsSync } from "node:fs";

@@ -1,8 +1,8 @@
 /**
  * Resource staging — walks `project.resources`, copies files into staging,
  * and applies `${project.x}` substitution on text files whose extension is
- * on the allowlist (§1.7). First-declared entry wins on output-path
- * collisions; duplicates are skipped with a warning.
+ * on the allowlist. First-declared entry wins on output-path collisions;
+ * duplicates are skipped with a warning.
  */
 
 import { existsSync } from "node:fs";

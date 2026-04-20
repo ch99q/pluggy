@@ -1,6 +1,6 @@
 /**
  * `pluggy.lock` read / write / verify. The lockfile lives at the repo root
- * and is shared across workspaces. See docs/SPEC.md §3.5.
+ * and is shared across workspaces.
  */
 
 import { readFileSync } from "node:fs";

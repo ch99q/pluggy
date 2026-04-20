@@ -2,7 +2,7 @@
  * Workspace-sibling resolver. Points at where the named sibling's built jar
  * _would_ live (`<workspace.root>/bin/<name>-<version>.jar`); the build
  * pipeline is responsible for producing it. Until then the integrity is a
- * sentinel string downstream consumers detect. See docs/SPEC.md §1.8.
+ * sentinel string (`PENDING_BUILD_INTEGRITY`) downstream consumers detect.
  */
 
 import { join } from "node:path";

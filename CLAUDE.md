@@ -38,7 +38,7 @@ See `conventions/` for the full conventions with examples in both TypeScript and
 
 ## Repository structure
 
-pluggy is a Minecraft plugin CLI. The source tree is TypeScript, organized around a [commander](https://github.com/tj/commander.js) command tree and a pluggable platform registry. Many modules are currently stubs — see `docs/SPEC.md` §8 for what's implemented vs planned.
+pluggy is a Minecraft plugin CLI. The source tree is TypeScript, organized around a [commander](https://github.com/tj/commander.js) command tree and a pluggable platform registry.
 
 ```
 src/
@@ -115,13 +115,13 @@ Many modules are stubs: their functions throw `new Error("not implemented: <name
 1. Write or un-skip the contract tests in `<module>.test.ts` first. They're `describe.skip` blocks with concrete assertions — they define the contract the implementation must satisfy.
 2. Replace the `throw` body with the implementation.
 3. Remove the `.skip` from the tests and confirm they pass with `vp test <module>`.
-4. Do not change the exported function signatures, argument shapes, or return types without updating `docs/SPEC.md` first. Callers in other modules rely on them.
+4. Do not change exported function signatures, argument shapes, or return types without checking every caller in the repo — these are the contract other modules rely on.
 
 This pattern lets parallel agents implement different modules without blocking on each other.
 
 ### Cross-platform requirements
 
-Every file path, process spawn, signal, and UI concern must work identically on macOS, Linux, and Windows. Concrete rules live in `docs/SPEC.md` §3.8:
+Every file path, process spawn, signal, and UI concern must work identically on macOS, Linux, and Windows:
 
 - Paths in `project.json` / `pluggy.lock` are always forward-slashed (normalize via `portable.toPosixPath`).
 - Link large files with `portable.linkOrCopy` (hardlink first, copy fallback — never symlink).

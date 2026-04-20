@@ -119,8 +119,8 @@ async function installAll(opts: InstallOptions, scope: ResolvedScope): Promise<I
     nextEntries[name] = toLockEntry(resolved, info.declaredBy);
   }
 
-  // Drop orphan entries — §3.5 ranges over all declarations, so after a full
-  // resolve run the lock should only contain what's declared.
+  // Drop orphan lockfile entries: after a full-resolve run the lock should
+  // only contain what's declared across the repo.
   for (const key of Object.keys(nextEntries)) {
     if (!byName.has(key)) {
       delete nextEntries[key];

@@ -3,9 +3,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import process from "node:process";
 
-/**
- * Parsed `project.json`. See docs/SPEC.md §1 for field semantics.
- */
+/** Parsed `project.json`. */
 export interface Project {
   name: string;
   version: string;

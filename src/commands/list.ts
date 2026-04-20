@@ -165,7 +165,7 @@ function selectTargets(
 }
 
 function normalizeDependencySource(name: string, raw: string | Dependency): ResolvedSource {
-  // Short-form `"foo": "1.2.3"` is sugar for `modrinth:<name>` — §1.4.
+  // Short-form `"foo": "1.2.3"` is sugar for `modrinth:<name>`.
   if (typeof raw === "string") {
     return { kind: "modrinth", slug: name, version: raw };
   }

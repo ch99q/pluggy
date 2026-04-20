@@ -2,7 +2,7 @@
  * Maven resolver. Walks `ctx.registries` in order against the standard
  * `<registry>/<group/with/slashes>/<artifact>/<version>/<artifact>-<version>.jar`
  * path; first 200 wins. Throws with the full failure list when every
- * registry fails. See docs/SPEC.md §2.4 and §1.5.
+ * registry fails.
  */
 
 import { createHash } from "node:crypto";

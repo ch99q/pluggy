@@ -90,8 +90,8 @@ export async function doRemove(opts: RemoveOptions): Promise<RemoveResult> {
     }
   }
 
-  // §2.5: cached-jar deletion is best-effort and operates on the cache copy
-  // only — the user's source jar is never touched.
+  // Cached-jar deletion is best-effort and operates on the cache copy only
+  // — the user's source jar is never touched.
   let fileRemoved = false;
   if (opts.keepFile !== true && lockEntryRemoved) {
     const priorEntry = lock?.entries[opts.plugin];

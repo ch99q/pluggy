@@ -1,7 +1,7 @@
 /**
  * Build pipeline — compile → resources → descriptor → shade → jar.
- * See docs/SPEC.md §2.9. Workspace orchestration is the caller's job;
- * `buildProject` handles exactly one workspace per call.
+ * Workspace orchestration is the caller's job; `buildProject` handles
+ * exactly one workspace per call.
  */
 
 import { createHash } from "node:crypto";

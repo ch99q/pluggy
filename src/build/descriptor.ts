@@ -4,7 +4,7 @@ import type { ResolvedProject } from "../project.ts";
 
 /**
  * Pick the descriptor spec for the project's primary platform and verify
- * that all declared platforms share the same descriptor family (§5.2).
+ * that all declared platforms share the same descriptor family.
  *
  * A family is keyed by `descriptor.path` — cross-family `compatibility.platforms`
  * arrays throw with guidance to split into separate workspaces.
@@ -41,7 +41,7 @@ export function pickDescriptor(project: ResolvedProject): DescriptorSpec {
       throw new Error(
         `build: project "${project.name}" declares platforms from different descriptor families ` +
           `("${primaryId}" uses "${primary.descriptor.path}", "${id}" uses "${other.descriptor.path}"). ` +
-          `Split them into separate workspaces — one per family (see docs/SPEC.md §5.2).`,
+          `Split them into separate workspaces — one per family.`,
       );
     }
   }

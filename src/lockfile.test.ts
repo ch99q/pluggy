@@ -1,6 +1,4 @@
-/**
- * Contract tests for src/lockfile.ts. See docs/SPEC.md §3.5.
- */
+/** Contract tests for the pluggy.lock reader/writer. */
 
 import { mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";

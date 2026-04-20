@@ -10,9 +10,9 @@ import { getRegisteredPlatforms } from "../platform/mod.ts";
 import { parseIdentifier } from "../source.ts";
 
 /**
- * Validate a plugin identifier (§6.2 grammar) and return the raw string.
- * Downstream code calls `parseIdentifier` again for the tagged union; this
- * parser exists so commander surfaces malformed identifiers at parse time.
+ * Validate a plugin identifier and return the raw string. Downstream code
+ * calls `parseIdentifier` again for the tagged union; this parser exists so
+ * commander surfaces malformed identifiers at parse time.
  */
 export function parseIdentifierArg(value: string): string {
   try {

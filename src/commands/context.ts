@@ -1,6 +1,5 @@
 /**
  * Shared scope / ResolveContext helpers for `install` and `remove`.
- * Scoping rules live in docs/SPEC.md §2.4 / §2.5.
  */
 
 import process from "node:process";
@@ -167,8 +166,8 @@ export function collectDeclared(targets: ScopeTarget[]): Array<{
 
 /**
  * Canonicalize a `DependencyValue` — sugar string or long form — into a
- * `(source, version)` pair. Sugar `"foo": "1.2.3"` means `modrinth:<name>`
- * (§1.4).
+ * `(source, version)` pair. Sugar `"foo": "1.2.3"` expands to
+ * `modrinth:<name>`.
  */
 export function canonicalizeDeclared(
   name: string,

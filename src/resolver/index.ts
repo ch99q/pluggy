@@ -1,7 +1,7 @@
 /**
  * Dependency resolver — dispatches a `ResolvedSource` to its per-kind
  * resolver, which produces a `ResolvedDependency` (cached jar path plus
- * integrity hash). See docs/SPEC.md §2.4 and §3.4.
+ * integrity hash).
  */
 
 import type { ResolvedSource } from "../source.ts";
