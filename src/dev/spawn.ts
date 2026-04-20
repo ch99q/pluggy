@@ -17,11 +17,12 @@ export interface SpawnServerOptions {
 }
 
 /**
- * Spawn `java -Xmx<memory> <jvmArgs> -jar <serverJar>` inside `devDir`.
+ * Spawn `java -Xmx<memory> <jvmArgs> -jar <serverJar> nogui` inside `devDir`.
+ * `nogui` suppresses Bukkit's AWT console window on desktop JVMs.
  * Installs a SIGINT handler that is disposed automatically on child exit.
  */
 export function spawnServer(opts: SpawnServerOptions): ChildProcess {
-  const argv = [`-Xmx${opts.memory}`, ...opts.jvmArgs, "-jar", opts.serverJarName];
+  const argv = [`-Xmx${opts.memory}`, ...opts.jvmArgs, "-jar", opts.serverJarName, "nogui"];
 
   const child = spawn("java", argv, {
     cwd: opts.devDir,

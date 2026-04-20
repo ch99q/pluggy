@@ -57,7 +57,7 @@ describe("spawnServer", () => {
     vi.restoreAllMocks();
   });
 
-  test("invokes `java -Xmx… jvmArgs -jar server.jar` with cwd=devDir, stdin piped", () => {
+  test("invokes `java -Xmx… jvmArgs -jar server.jar nogui` with cwd=devDir, stdin piped", () => {
     const fake = makeFakeChild();
     vi.mocked(spawn).mockReturnValue(fake as unknown as ReturnType<typeof spawn>);
 
@@ -77,6 +77,7 @@ describe("spawnServer", () => {
       "-XX:+ParallelRefProcEnabled",
       "-jar",
       "server.jar",
+      "nogui",
     ]);
     expect((options as { cwd: string }).cwd).toBe("/tmp/project/dev");
     expect((options as { stdio: unknown }).stdio).toEqual(["pipe", "inherit", "inherit"]);
@@ -136,7 +137,7 @@ describe("spawnServer", () => {
     expect(args[0]).toBe("-Xmx512M");
   });
 
-  test("serverJarName is the last positional arg after -jar", () => {
+  test("serverJarName sits between -jar and the trailing `nogui`", () => {
     const fake = makeFakeChild();
     vi.mocked(spawn).mockReturnValue(fake as unknown as ReturnType<typeof spawn>);
 
@@ -148,7 +149,8 @@ describe("spawnServer", () => {
     });
 
     const args = vi.mocked(spawn).mock.calls[0][1] as string[];
-    expect(args[args.length - 2]).toBe("-jar");
-    expect(args[args.length - 1]).toBe("paperclip-1.21.8.jar");
+    expect(args[args.length - 3]).toBe("-jar");
+    expect(args[args.length - 2]).toBe("paperclip-1.21.8.jar");
+    expect(args[args.length - 1]).toBe("nogui");
   });
 });
