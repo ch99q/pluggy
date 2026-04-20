@@ -434,6 +434,10 @@ Aliases: `i`.
 4. Write entry to the target `project.json:dependencies`.
 5. Update shared lockfile at repo root (§3.5).
 
+**Multi-workspace conflicts.** If two workspaces declare the same dep name with different `source` or `version`, `install` refuses with a descriptive error rather than silently picking one. The lockfile is shared across the repo; there can only be one resolved entry per name.
+
+**Orphan lockfile entries.** On a no-argument `install` that resolves every declaration, any lockfile entry not declared by at least one workspace is dropped. (Orphans are still tolerated by `install --force <plugin>` and never reported as "stale" by `verifyLock` — see §3.5.)
+
 **Examples:**
 
 ```bash
@@ -462,6 +466,10 @@ Aliases: `rm`.
 - At a **root** with workspaces: requires `--workspace <name>` or `--workspaces` (ambiguous otherwise — errors).
 - In a **workspace** or **standalone**: removes from the current project.
 
+**Lockfile behavior.** When the dep is removed from every project that declared it, the lockfile entry is dropped. Otherwise `declaredBy` is trimmed to reflect the new reality.
+
+**Cached-jar deletion.** Unless `--keep-file`, `remove` deletes the **cached** copy under `<cache>/dependencies/<kind>/…` (the content-addressed copy pluggy manages). It never deletes the user's own `file:` source jar. Deletion is best-effort — failures warn but don't fail the command.
+
 ### 2.6 `info <plugin>` — show plugin details ⚠️
 
 Aliases: `show`.
@@ -471,6 +479,10 @@ Aliases: `show`.
 | `<plugin>` | Identifier in any supported form (see §6) |
 
 **Output (planned):** description, homepage, license, available versions, per-version compatibility against the current `compatibility` config, download size.
+
+**Homepage fallback order** (Modrinth source): `source_url` → `wiki_url` → `issues_url` → `discord_url` → `null`. The first non-null wins.
+
+**Per-version compatibility check** (emitted only when `info` is run inside a pluggy project): for each Modrinth version, the version's `game_versions` array is intersected with the project's `compatibility.versions`. Non-empty intersection ⇒ `"ok"`; empty ⇒ `"warn"`. The field is omitted outside a project.
 
 Not workspace-aware — operates on the passed identifier.
 
@@ -483,6 +495,8 @@ Not workspace-aware — operates on the passed identifier.
 | `--platform <name>`  | enum   | —       | Filter by platform 🎯   |
 | `--version <semver>` | string | —       | Filter by MC version 🎯 |
 | `--beta`             | bool   | false   | Include pre-releases 🎯 |
+
+**`--beta` limitation.** Modrinth's `/v2/search` endpoint has no project-level pre-release facet — individual versions have a `version_type`, but the search API doesn't filter on it. `--beta` is accepted for consistency but is a **no-op at search time**; it's honored later when `install` / `info` resolves a specific version. Setting it in human mode logs a warning; in `--json` mode it is silent.
 
 Global command; not workspace-aware. Only searches Modrinth (Maven has no search API; local file lookups are not meaningful across a registry).
 
@@ -498,6 +512,10 @@ Aliases: `ls`.
 | `--workspaces`       | bool   | see below | Aggregated view across all workspaces               |
 
 **Default scope:** at a root with workspaces → aggregated. In a workspace or standalone → current project.
+
+**Short-form dep resolution.** A short-form dependency value (`"worldedit": "7.3.15"`) is always treated as a Modrinth pin where the **dep name doubles as the slug**. This is symmetric with the schema rule in §1.4.
+
+**Registries** are rendered as `{ url, authenticated }` with `authenticated: true` when the entry has `credentials`. Usernames and passwords are never emitted in either human or JSON output — `list` is safe to share.
 
 ### 2.9 `build` — compile and package ⚠️
 
@@ -524,6 +542,13 @@ Aliases: `b`.
 7. Package into jar; apply `shading` rules.
 8. For workspaces: output each as a separate jar.
 
+**Failure mode.**
+
+- **Single project** (standalone, inside a workspace, or `--workspace <name>` narrowed): a build failure rethrows immediately. The CLI's top-level handler formats the error.
+- **Multiple workspaces** (root default or `--workspaces`): a workspace failure is logged and collected but does **not** abort the remaining workspaces — users see which others succeeded. After the run, the command exits `1` if any workspace failed.
+
+**JSON output routing.** On full success, the aggregate JSON envelope goes to stdout. On any workspace failure (even partial), the envelope goes to stderr with `status: "error"` and full per-workspace `results[]`. Matches §3.1.
+
 ### 2.10 `doctor` — environment check ⚠️
 
 No flags.
@@ -533,10 +558,17 @@ No flags.
 - Java toolchain present and version (needed for BuildTools-based platforms).
 - Cache location accessible + size.
 - All `registries` reachable.
-- `project.json` conforms to schema.
+- `project.json` conforms to schema — **run against every workspace**, not just the root, so a bad leaf is named.
 - Workspace graph valid (no cycles, all `workspace:` deps resolve).
 - Descriptor family consistency (no cross-family `compatibility.platforms`).
 - Outdated deps (suggest `list --outdated`).
+
+**Warn vs fail.** Each check returns one of `pass` / `warn` / `fail`. Only `fail` contributes to a non-zero exit code. Typical mapping:
+
+- `fail`: `java` missing, cache not writable, `project.json` invalid schema, workspace cycle, cross-family descriptor mismatch.
+- `warn`: cache directory doesn't exist yet (first run), registry HEAD timeout, Java version outside BuildTools's 8–21 window when the primary platform is `spigot`/`bukkit`, `outdated` placeholder until it's implemented.
+
+In `--json` mode, a full-success envelope goes to stdout; any `fail` sends the envelope to stderr with `status: "error"` plus a `failures: []` array for quick triage.
 
 Checks the root and every workspace.
 
@@ -608,7 +640,7 @@ By source kind:
 
 - Watches `src/**/*.java`, anything referenced by `resources`, and `project.json` itself.
 - Debounces file events by 200ms to coalesce editor saves.
-- On change: incremental rebuild. If build succeeds, **restart the server by default** (safer, always correct). With `--reload`, send `/reload` instead (faster but known to corrupt plugins that hold state).
+- On change: incremental rebuild. If build succeeds, **restart the server by default** (safer, always correct). With `--reload`, send `reload confirm\n` to the server's stdin instead (faster but known to corrupt plugins that hold state; `confirm` suppresses Bukkit's interactive safety prompt).
 - If build fails, log the error and keep the server running on the previous jar.
 
 #### Shutdown and stdin
@@ -620,6 +652,26 @@ By source kind:
 #### EULA
 
 Mojang-based servers refuse to start without `eula.txt` set to `true`. `pluggy dev` auto-writes it on first run with a header comment noting that pluggy accepted it on the user's behalf. Set `PLUGGY_DEV_NO_EULA=1` to opt out and manage it manually.
+
+#### JSON output
+
+`dev` is inherently interactive — the server's own stdout/stderr stream to the user's terminal. `--json` therefore emits exactly **one** envelope on stdout at startup:
+
+```json
+{
+  "status": "starting",
+  "platform": "paper",
+  "version": "1.21.8",
+  "port": 25565,
+  "devDir": "/.../dev"
+}
+```
+
+After that line, the Minecraft server's logs pass through unchanged. Pluggy does not wrap or re-encode them. A later "stopped" envelope is not guaranteed; exit code communicates success/failure.
+
+#### `server.properties` rendering
+
+The file is written with pluggy defaults first (`motd=<project.name> dev`, `online-mode=<dev.onlineMode ?? false>`, `server-port=<port>`), then any keys from `project.dev.serverProperties` that aren't already defaults appended in declaration order. User-set values for default keys win per-key, but stay in their default slot for diff stability.
 
 #### Platform caveats
 
