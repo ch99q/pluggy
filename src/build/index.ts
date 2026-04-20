@@ -21,6 +21,7 @@ import { resolveMaven } from "../resolver/maven.ts";
 
 import { compileJava } from "./compile.ts";
 import { pickDescriptor } from "./descriptor.ts";
+import { writeIdeFiles } from "./ide.ts";
 import { stageResources } from "./resources.ts";
 import { applyShading } from "./shade.ts";
 
@@ -77,6 +78,14 @@ export async function buildProject(
 
   const depJars = resolvedDeps.flatMap(flattenJarPaths);
   const classpath = dedupePreservingOrder([...depJars, ...platformApiJars]);
+
+  if (!opts.skipClasspath) {
+    try {
+      await writeIdeFiles(project, classpath, stagingDir);
+    } catch (err) {
+      log.debug(`build: IDE scaffolding failed (non-fatal): ${(err as Error).message}`);
+    }
+  }
 
   await stageResources(project, stagingDir);
 
