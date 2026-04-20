@@ -305,9 +305,14 @@ Use a `workspace:<name>` source, where `<name>` matches the target workspace's `
 
 Given a cwd, pluggy walks up looking for a `project.json`:
 
-- If the found `project.json` declares `workspaces`, cwd is at the **root** (or in an unrelated subdir).
+- If the found `project.json` declares `workspaces`, cwd is at the **root** (or in an unrelated subdir under it). When cwd is at or inside a declared workspace's directory, `current` is set to that workspace and `atRoot` is **false** — "inside a workspace" always means inside, even when cwd is exactly the workspace root.
 - If the found `project.json` does not declare `workspaces`, and its parent's `project.json` lists this dir in `workspaces`, cwd is **in a workspace**.
 - Otherwise it's a **standalone** (non-workspace) project.
+
+**Edge cases:**
+
+- **Missing workspace `project.json`.** If a path listed in `workspaces` does not contain a `project.json`, discovery fails with a hard error. Silently dropping the entry would hide typos in the workspaces array.
+- **Nested workspaces.** A workspace's own `project.json` must not declare a further `workspaces` array. The hierarchy is single-level: one root, N leaf workspaces. Discovery ignores a nested `workspaces` field (doesn't recurse into it).
 
 Per-command behavior is in §2. The lockfile is shared across all workspaces (§3.5).
 
