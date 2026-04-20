@@ -13,13 +13,17 @@ interface ModrinthSearchHit {
   categories?: string[];
   client_side?: string;
   server_side?: string;
+  /** Always "mod" for plugins — Modrinth folds plugins under "mod" + category tags. */
   project_type?: string;
   downloads?: number;
+  follows?: number;
   icon_url?: string;
   project_id?: string;
   author?: string;
   display_categories?: string[];
+  /** Supported Minecraft (game) versions, not plugin versions. */
   versions?: string[];
+  /** Modrinth version ID of the latest version — opaque, not a semver. */
   latest_version?: string;
   license?: string;
 }
@@ -120,15 +124,42 @@ function printHumanSearch(query: string, result: SearchResult): void {
     ),
   );
   for (const hit of result.hits) {
-    const latest = hit.latest_version ?? "?";
     const downloads = hit.downloads ?? 0;
     log.info("");
-    log.info(`${bold(hit.title)}  ${dim(`(${hit.slug})`)}  ${dim(`v${latest}`)}`);
+    log.info(`${bold(hit.title)}  ${dim(`(${hit.slug})`)}`);
     const desc = truncate(hit.description, 120);
     if (desc) log.info(`  ${desc}`);
+    const mcRange = renderGameVersionRange(hit.versions);
+    if (mcRange) log.info(`  ${dim(`MC: ${mcRange}`)}`);
     log.info(`  ${dim(`downloads: ${downloads.toLocaleString()}`)}`);
     log.info(`  ${dim(`https://modrinth.com/plugin/${hit.slug}`)}`);
   }
+}
+
+/**
+ * Render a compact summary of the MC versions the hit supports. Returns
+ * something like `"1.8.8 … 1.21.8"` for the full span, or a single version
+ * when only one is supported. Returns an empty string when nothing is known.
+ *
+ * Uses a numeric-segment compare so "1.10.2" sorts after "1.9.4"
+ * (lexicographic sort gets it wrong).
+ */
+function renderGameVersionRange(versions: string[] | undefined): string {
+  if (!versions || versions.length === 0) return "";
+  if (versions.length === 1) return versions[0];
+  const sorted = [...versions].sort(compareGameVersion);
+  return `${sorted[0]} … ${sorted[sorted.length - 1]}`;
+}
+
+function compareGameVersion(a: string, b: string): number {
+  const aParts = a.split(/[.-]/).map((s) => Number.parseInt(s, 10) || 0);
+  const bParts = b.split(/[.-]/).map((s) => Number.parseInt(s, 10) || 0);
+  const len = Math.max(aParts.length, bParts.length);
+  for (let i = 0; i < len; i++) {
+    const diff = (aParts[i] ?? 0) - (bParts[i] ?? 0);
+    if (diff !== 0) return diff;
+  }
+  return 0;
 }
 
 export function searchCommand(): Command {

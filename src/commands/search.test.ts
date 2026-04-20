@@ -31,14 +31,27 @@ afterEach(() => {
 describe("doSearch", () => {
   test("hits the Modrinth search endpoint with plugin facet and returns hits", async () => {
     let capturedUrl = "";
+    // Mock payload mirrors the real /v2/search response shape: `latest_version`
+    // is an opaque Modrinth version ID (not a semver), `project_type` is
+    // always "mod" even for plugins, and `versions` is the MC game-version list.
     const body = {
       hits: [
         {
+          project_id: "hXiIvTyT",
+          project_type: "mod",
           slug: "worldedit",
+          author: "me4502",
           title: "WorldEdit",
           description: "In-game editor.",
+          categories: ["bukkit", "paper", "spigot"],
+          display_categories: ["bukkit", "paper"],
+          versions: ["1.20.6", "1.21.4", "1.21.8"],
           downloads: 1000000,
-          latest_version: "7.3.15",
+          follows: 500,
+          latest_version: "Oa9ZDzZq",
+          license: "GPL-3.0-only",
+          client_side: "unsupported",
+          server_side: "required",
         },
       ],
       offset: 0,
