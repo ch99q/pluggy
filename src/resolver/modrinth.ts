@@ -70,6 +70,25 @@ export async function resolveModrinth(
   };
 }
 
+/**
+ * Return the version number of the newest Modrinth release for a slug. Used
+ * by `list --outdated` and `doctor` to compare the lockfile against upstream
+ * without downloading the jar. With `includePrerelease`, `beta`/`alpha`
+ * releases are eligible; otherwise only `release` versions. Returns
+ * `undefined` when the project has no versions of the requested maturity.
+ */
+export async function getLatestModrinthVersion(
+  slug: string,
+  includePrerelease: boolean,
+): Promise<string | undefined> {
+  const versions = await fetchVersions(slug);
+  const eligible = includePrerelease
+    ? versions
+    : versions.filter((v) => v.version_type === "release");
+  if (eligible.length === 0) return undefined;
+  return eligible[0].version_number;
+}
+
 async function fetchVersions(slug: string): Promise<ModrinthVersion[]> {
   const url = `${MODRINTH_API}/project/${encodeURIComponent(slug)}/version`;
   const res = await fetch(url);

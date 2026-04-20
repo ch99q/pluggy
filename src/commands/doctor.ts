@@ -6,9 +6,11 @@ import process from "node:process";
 import { Command } from "commander";
 
 import { pickDescriptor } from "../build/descriptor.ts";
+import { type LockfileEntry, readLock } from "../lockfile.ts";
 import { bold, green, log, red, yellow } from "../logging.ts";
 import { getRegisteredPlatforms } from "../platform/mod.ts";
 import { getCachePath, type ResolvedProject } from "../project.ts";
+import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { resolveWorkspaceContext, topologicalOrder, type WorkspaceContext } from "../workspace.ts";
 
 export type CheckStatus = "pass" | "warn" | "fail";
@@ -78,7 +80,7 @@ export async function runDoctorCommand(
   const descResults = hooks.descriptor ? hooks.descriptor(context) : checkDescriptors(context);
   all.push(...descResults);
 
-  all.push(await (hooks.outdated ? hooks.outdated() : checkOutdatedPlaceholder()));
+  all.push(await (hooks.outdated ? hooks.outdated() : checkOutdated(context)));
 
   const hardFailures = all.filter((c) => c.status === "fail");
   const ok = hardFailures.length === 0;
@@ -422,12 +424,65 @@ export function checkDescriptors(context: WorkspaceContext): CheckResult[] {
   return out;
 }
 
-export async function checkOutdatedPlaceholder(): Promise<CheckResult> {
+/**
+ * Compare every Modrinth-sourced dep in the root lockfile against the
+ * current newest stable on Modrinth. Reports `pass` when nothing is behind,
+ * `warn` (non-fatal) with a list of `<name>: current → latest` entries when
+ * anything is outdated. Network failures degrade to `warn` with a note so
+ * a flaky Modrinth doesn't block `doctor`.
+ */
+export async function checkOutdated(context: WorkspaceContext): Promise<CheckResult> {
+  const lock = readLock(context.root.rootDir);
+  const modrinthEntries: Array<[string, LockfileEntry]> =
+    lock === null
+      ? []
+      : Object.entries(lock.entries).filter(([, entry]) => entry.source.kind === "modrinth");
+
+  if (modrinthEntries.length === 0) {
+    return {
+      id: "outdated",
+      label: "Outdated dependencies",
+      status: "pass",
+      detail: "no Modrinth dependencies locked",
+    };
+  }
+
+  const outdated: string[] = [];
+  const errors: string[] = [];
+  for (const [name, entry] of modrinthEntries) {
+    if (entry.source.kind !== "modrinth") continue;
+    try {
+      const latest = await getLatestModrinthVersion(entry.source.slug, false);
+      if (latest === undefined) continue;
+      if (latest !== entry.resolvedVersion) {
+        outdated.push(`${name}: ${entry.resolvedVersion} → ${latest}`);
+      }
+    } catch (err) {
+      errors.push(`${name}: ${(err as Error).message}`);
+    }
+  }
+
+  if (errors.length > 0) {
+    return {
+      id: "outdated",
+      label: "Outdated dependencies",
+      status: "warn",
+      detail: `could not query ${errors.length} deps: ${errors.slice(0, 3).join("; ")}`,
+    };
+  }
+  if (outdated.length === 0) {
+    return {
+      id: "outdated",
+      label: "Outdated dependencies",
+      status: "pass",
+      detail: `${modrinthEntries.length} deps up to date`,
+    };
+  }
   return {
     id: "outdated",
     label: "Outdated dependencies",
     status: "warn",
-    detail: "(not yet implemented)",
+    detail: outdated.join("; "),
   };
 }
 

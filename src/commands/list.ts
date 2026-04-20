@@ -2,9 +2,10 @@ import process from "node:process";
 
 import { Command } from "commander";
 
-import { bold, dim, log } from "../logging.ts";
+import { bold, dim, log, yellow } from "../logging.ts";
 import { readLock } from "../lockfile.ts";
 import type { Dependency, Registry, ResolvedProject } from "../project.ts";
+import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { parseSource, type ResolvedSource } from "../source.ts";
 import {
   findWorkspace,
@@ -30,6 +31,10 @@ export interface DepEntry {
   resolvedVersion: string | null;
   integrity: string | null;
   declaredBy: string[];
+  /** Latest Modrinth version, populated only when `--outdated` ran. `null` when not queried, not Modrinth, or query failed. */
+  latestVersion?: string | null;
+  /** True when `latestVersion` is known and differs from `resolvedVersion`. */
+  outdated?: boolean;
 }
 
 export interface RegistryEntry {
@@ -92,7 +97,7 @@ export async function doList(options: ListOptions): Promise<ListResult> {
     }
   }
 
-  const deps = Array.from(agg.values()).sort((a, b) => a.name.localeCompare(b.name));
+  let deps = Array.from(agg.values()).sort((a, b) => a.name.localeCompare(b.name));
   const registries = collectRegistries(ctx);
 
   const target =
@@ -102,12 +107,9 @@ export async function doList(options: ListOptions): Promise<ListResult> {
         ? (options.workspace ?? ctx.current?.name ?? ctx.root.name)
         : ctx.root.name;
 
-  const result: ListResult = { scope, deps, registries, target };
-
-  if (options.outdated && !options.json) {
-    log.info(
-      dim("(--outdated not yet implemented; will require a Modrinth version-query per dep)"),
-    );
+  if (options.outdated) {
+    await enrichWithLatestVersions(deps);
+    deps = deps.filter((d) => d.outdated === true);
   }
 
   if (options.tree && !options.json) {
@@ -116,13 +118,44 @@ export async function doList(options: ListOptions): Promise<ListResult> {
     );
   }
 
+  const result: ListResult = { scope, deps, registries, target };
+
   if (options.json) {
     console.log(JSON.stringify({ status: "success", ...result }, null, 2));
   } else {
-    printHumanList(result);
+    printHumanList(result, options.outdated === true);
   }
 
   return result;
+}
+
+/**
+ * Query Modrinth for the newest stable version of every Modrinth-sourced dep
+ * and annotate each entry with `latestVersion` + `outdated`. Non-Modrinth
+ * entries get `latestVersion: null`. Network failures are logged at debug and
+ * the entry is left un-annotated (not marked outdated) so a transient API
+ * hiccup doesn't surface a false positive.
+ */
+async function enrichWithLatestVersions(deps: DepEntry[]): Promise<void> {
+  for (const dep of deps) {
+    if (dep.source.kind !== "modrinth") {
+      dep.latestVersion = null;
+      continue;
+    }
+    try {
+      const latest = await getLatestModrinthVersion(dep.source.slug, false);
+      if (latest === undefined) {
+        dep.latestVersion = null;
+        continue;
+      }
+      dep.latestVersion = latest;
+      const current = dep.resolvedVersion ?? dep.declaredVersion;
+      dep.outdated = current !== "*" && current !== latest;
+    } catch (err) {
+      log.debug(`list: outdated check failed for "${dep.name}": ${(err as Error).message}`);
+      dep.latestVersion = null;
+    }
+  }
 }
 
 function determineScope(
@@ -191,18 +224,23 @@ function normalizeRegistry(entry: string | Registry): RegistryEntry {
   return { url: entry.url, authenticated: entry.credentials !== undefined };
 }
 
-function printHumanList(result: ListResult): void {
+function printHumanList(result: ListResult, outdatedMode: boolean): void {
   log.info(bold(`${result.scope}: ${result.target}`));
   if (result.deps.length === 0) {
-    log.info(dim("  (no dependencies declared)"));
+    const empty = outdatedMode ? "  (everything is up to date)" : "  (no dependencies declared)";
+    log.info(dim(empty));
   } else {
     log.info("");
-    log.info(bold("dependencies:"));
+    log.info(bold(outdatedMode ? "outdated dependencies:" : "dependencies:"));
     for (const dep of result.deps) {
       const resolved = dep.resolvedVersion ?? dim("(unresolved — run install)");
       const decl = result.scope === "root" ? ` ${dim(`[${dep.declaredBy.join(", ")}]`)}` : "";
+      const update =
+        dep.outdated === true && dep.latestVersion !== null && dep.latestVersion !== undefined
+          ? `  ${yellow(`→ ${dep.latestVersion}`)}`
+          : "";
       log.info(
-        `  ${dep.name}  ${dim(`declared: ${dep.declaredVersion}`)}  ${dim(`resolved:`)} ${resolved}  ${dim(describeSource(dep.source))}${decl}`,
+        `  ${dep.name}  ${dim(`declared: ${dep.declaredVersion}`)}  ${dim(`resolved:`)} ${resolved}${update}  ${dim(describeSource(dep.source))}${decl}`,
       );
     }
   }
