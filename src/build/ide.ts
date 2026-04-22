@@ -26,19 +26,21 @@ export async function writeIdeFiles(
   classpath: string[],
   stagingOutputDir: string,
 ): Promise<void> {
-  const ide = project.ide;
-  if (ide === undefined) return;
+  const ides = project.ide;
+  if (ides === undefined || ides.length === 0) return;
 
-  switch (ide) {
-    case "vscode":
-      await writeVscodeSettings(project, classpath);
-      return;
-    case "eclipse":
-      await writeEclipseFiles(project, classpath, stagingOutputDir);
-      return;
-    case "intellij":
-      await writeIntellijFiles(project, classpath);
-      return;
+  for (const ide of ides) {
+    switch (ide) {
+      case "vscode":
+        await writeVscodeSettings(project, classpath);
+        break;
+      case "eclipse":
+        await writeEclipseFiles(project, classpath, stagingOutputDir);
+        break;
+      case "intellij":
+        await writeIntellijFiles(project, classpath);
+        break;
+    }
   }
 }
 
@@ -242,9 +244,9 @@ function jdkMajorForMcVersion(version: string): number {
   const m = version.match(/^(\d+)\.(\d+)(?:\.(\d+))?/);
   if (m === null) return 21;
   const major = Number(m[1]);
+  if (major >= 2) return 21;
   const minor = Number(m[2]);
   const patch = m[3] !== undefined ? Number(m[3]) : 0;
-  if (major !== 1) return 21; // Future-proof: unknown majors → newest known.
   if (minor >= 21) return 21;
   if (minor === 20 && patch >= 5) return 21;
   if (minor >= 18) return 17;

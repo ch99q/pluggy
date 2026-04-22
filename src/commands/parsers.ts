@@ -41,6 +41,13 @@ export function parsePlatform(value: string): string {
   return id;
 }
 
+export function parseMcVersion(value: string): string {
+  if (/^\d+\.\d+(\.\d+)?$/.test(value)) return value;
+  throw new InvalidArgumentError(
+    `Invalid Minecraft version: ${value} — expected format like 1.21.8 or 26.1.2`,
+  );
+}
+
 export function parseInteger(value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (Number.isNaN(parsed)) throw new InvalidArgumentError(`Invalid integer: ${value}`);

@@ -11,7 +11,7 @@ export interface Project {
   authors?: string[];
   /** Fully-qualified main class. Required for plugin workspaces; not on a root that declares `workspaces`. */
   main?: string;
-  ide?: "vscode" | "eclipse" | "intellij";
+  ide?: ("vscode" | "eclipse" | "intellij")[];
   compatibility: {
     versions: string[];
     platforms: string[];

@@ -10,7 +10,7 @@ import { pickDescriptor } from "../build/descriptor.ts";
 import { classMajorToJava, readJarClassMajor, readManifestAttribute } from "../jar.ts";
 import { type LockfileEntry, type TransitiveEntry, readLock } from "../lockfile.ts";
 import { bold, green, log, red, yellow } from "../logging.ts";
-import { getRegisteredPlatforms } from "../platform/index.ts";
+import { getPlatform, getRegisteredPlatforms } from "../platform/index.ts";
 import { getCachePath, type ResolvedProject } from "../project.ts";
 import { getLatestModrinthVersion } from "../resolver/modrinth.ts";
 import { resolveWorkspaceContext, topologicalOrder, type WorkspaceContext } from "../workspace.ts";
@@ -35,6 +35,7 @@ export interface DoctorCommandOptions {
     project?: (project: ResolvedProject) => CheckResult;
     workspace?: (ctx: WorkspaceContext) => CheckResult;
     descriptor?: (ctx: WorkspaceContext) => CheckResult[];
+    versions?: (project: ResolvedProject) => Promise<CheckResult[]>;
     outdated?: () => Promise<CheckResult>;
     dependencyJars?: () => Promise<CheckResult>;
   };
@@ -84,6 +85,13 @@ export async function runDoctorCommand(
   const toValidate = projectsForValidation(context);
   for (const project of toValidate) {
     all.push(hooks.project ? hooks.project(project) : checkProjectValid(project));
+  }
+
+  for (const project of toValidate) {
+    const verResults = await (hooks.versions
+      ? hooks.versions(project)
+      : checkVersionCompatibility(project));
+    all.push(...verResults);
   }
 
   all.push(hooks.workspace ? hooks.workspace(context) : checkWorkspaceGraph(context));
@@ -398,6 +406,50 @@ export function checkProjectValid(project: ResolvedProject): CheckResult {
     status: "pass",
     detail: `name=${project.name}, version=${project.version}`,
   };
+}
+
+/**
+ * Verify that every declared version in `compatibility.versions` is actually
+ * available on every declared platform. Catches mismatches like Paper 26.x
+ * being listed for Spigot (which hasn't published that version).
+ */
+export async function checkVersionCompatibility(project: ResolvedProject): Promise<CheckResult[]> {
+  const { versions, platforms } = project.compatibility ?? {};
+  if (!versions?.length || !platforms?.length) return [];
+
+  const out: CheckResult[] = [];
+  for (const platform of platforms) {
+    let available: string[];
+    try {
+      available = await getPlatform(platform).getVersions();
+    } catch {
+      out.push({
+        id: "version-compat",
+        label: `Version compatibility (${platform})`,
+        status: "warn",
+        detail: `could not fetch version list for ${platform}`,
+      });
+      continue;
+    }
+    const set = new Set(available);
+    const missing = versions.filter((v) => !set.has(v));
+    if (missing.length > 0) {
+      out.push({
+        id: "version-compat",
+        label: `Version compatibility (${platform})`,
+        status: "fail",
+        detail: `${platform} does not publish version${missing.length > 1 ? "s" : ""} ${missing.join(", ")}`,
+      });
+    } else {
+      out.push({
+        id: "version-compat",
+        label: `Version compatibility (${platform})`,
+        status: "pass",
+        detail: `${versions.join(", ")}`,
+      });
+    }
+  }
+  return out;
 }
 
 /** Run topological order over workspaces; fails on cycles. */

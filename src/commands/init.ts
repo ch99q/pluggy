@@ -14,7 +14,7 @@ import { bold, dim, log } from "../logging.ts";
 import { getCurrentProject, type Project, resolveProjectFile } from "../project.ts";
 import { replace } from "../template.ts";
 
-import { parsePlatform, parseSemver } from "./parsers.ts";
+import { parseMcVersion, parsePlatform, parseSemver } from "./parsers.ts";
 
 /**
  * Scaffold a new project at `distDir` from the given `Project` config.
@@ -93,10 +93,11 @@ export function initCommand(): Command {
       },
       [] as string[],
     )
+    .option("--mc-version <version>", "Minecraft version for compatibility.", parseMcVersion)
     .option("-y, --yes", "Skip prompts and use defaults.")
     .addHelpText(
       "after",
-      `\nExamples:\n  $ pluggy init --platform paper --platform velocity\n  $ pluggy init --platform spigot --version 1.21.8`,
+      `\nExamples:\n  $ pluggy init --platform paper --platform velocity\n  $ pluggy init --platform spigot --mc-version 1.21.8`,
     )
     .action(async function action(this: Command, path: string | undefined, options) {
       const globalOpts = this.optsWithGlobals();
@@ -184,18 +185,52 @@ export function initCommand(): Command {
         );
       }
 
-      // Fetch latest version for each selected platform in parallel
-      if (!globalOpts.json) log.info(`Fetching latest versions…`);
-      const versionResults = await Promise.all(
-        platforms.map((p) => getPlatform(p).getLatestVersion()),
-      );
-      const versions = [...new Set(versionResults.map((v) => v.version))];
+      // IDE
+      const IDE_CHOICES: { value: "vscode" | "eclipse" | "intellij"; name: string }[] = [
+        { value: "vscode", name: "VS Code" },
+        { value: "intellij", name: "IntelliJ IDEA" },
+        { value: "eclipse", name: "Eclipse" },
+      ];
+      const ide: ("vscode" | "eclipse" | "intellij")[] | undefined = interactive
+        ? await checkbox({
+            message: "IDE integration",
+            choices: IDE_CHOICES,
+          })
+        : undefined;
+
+      // Resolve the Minecraft version for compatibility
+      let versions: string[];
+      if (options.mcVersion) {
+        versions = [options.mcVersion];
+      } else {
+        if (!globalOpts.json) log.info(`Fetching latest versions…`);
+        const versionLists = await Promise.all(
+          platforms.map(async (p) => ({
+            platform: p,
+            versions: await getPlatform(p).getVersions(),
+          })),
+        );
+        const common =
+          versionLists.reduce<string[] | null>((acc, { versions: vs }) => {
+            if (acc === null) return vs;
+            const set = new Set(vs);
+            return acc.filter((v) => set.has(v));
+          }, null) ?? [];
+        if (common.length === 0) {
+          throw new Error(
+            `No compatible Minecraft version found across platforms: ${platforms.join(", ")}. ` +
+              `Try selecting fewer platforms or specifying a version manually with --mc-version.`,
+          );
+        }
+        versions = [common[0]];
+      }
 
       const INITIAL_PROJECT: Project = {
         name: projectName,
         version: options.version || "1.0.0",
         description: options.description || "A simple Minecraft plugin",
         main: projectMain,
+        ...(ide && ide.length > 0 ? { ide } : {}),
         compatibility: {
           versions,
           platforms,
