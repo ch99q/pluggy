@@ -11,8 +11,13 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vite-plus/tes
 
 import type { ResolvedProject } from "../project.ts";
 
+import yazl from "yazl";
+import { createWriteStream } from "node:fs";
+
 import {
+  checkDependencyJars,
   checkDescriptors,
+  checkJava,
   checkProjectValid,
   checkWorkspaceGraph,
   type CheckResult,
@@ -36,6 +41,7 @@ function passingHooks(): DoctorCommandOptions["checks"] {
     workspace: () => pass("workspace", "Workspace graph"),
     descriptor: () => [pass("descriptor", "Descriptor family")],
     outdated: async () => pass("outdated", "Outdated dependencies"),
+    dependencyJars: async () => pass("dep-jars", "Dependency compatibility"),
   };
 }
 
@@ -157,6 +163,11 @@ describe("checkProjectValid", () => {
 
   test("valid project passes", () => {
     const r = checkProjectValid(makeProject());
+    expect(r.status).toBe("pass");
+  });
+
+  test("hyphenated name passes", () => {
+    const r = checkProjectValid(makeProject({ name: "my-plugin" }));
     expect(r.status).toBe("pass");
   });
 
@@ -284,5 +295,242 @@ describe("checkDescriptors", () => {
     const failing = results.filter((r) => r.status === "fail");
     expect(failing.length).toBeGreaterThan(0);
     expect(failing[0].detail).toMatch(/different descriptor families|family/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkJava
+// ---------------------------------------------------------------------------
+
+describe("checkJava", () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "pluggy-doctor-java-"));
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "test",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+      }),
+    );
+  });
+
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  test("passes when java version is provided for non-BuildTools platform", async () => {
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const r = await checkJava(ctx, 21);
+    expect(r.status).toBe("pass");
+    expect(r.detail).toBe("Java 21");
+  });
+
+  test("fails when javaError is provided", async () => {
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const r = await checkJava(ctx, undefined, "not found");
+    expect(r.status).toBe("fail");
+    expect(r.detail).toMatch(/not found/);
+  });
+
+  test("fails when userJava is undefined and no error", async () => {
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const r = await checkJava(ctx, undefined);
+    expect(r.status).toBe("fail");
+  });
+
+  test("warns for spigot when java is below BuildTools floor (no jar cached)", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "test",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["spigot"] },
+      }),
+    );
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    // No BuildTools.jar cached → floor defaults to 8. Java 7 < 8 → warn.
+    const r = await checkJava(ctx, 7);
+    expect(r.status).toBe("warn");
+    expect(r.detail).toMatch(/BuildTools requires Java/);
+  });
+
+  test("passes for spigot when java meets the floor", async () => {
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "test",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["spigot"] },
+      }),
+    );
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const r = await checkJava(ctx, 21);
+    expect(r.status).toBe("pass");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// checkDependencyJars
+// ---------------------------------------------------------------------------
+
+async function makeJar(path: string, entries: Record<string, Buffer | string>): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const zip = new yazl.ZipFile();
+    const ws = createWriteStream(path);
+    ws.once("error", reject);
+    ws.once("close", resolve);
+    zip.outputStream.pipe(ws);
+    for (const [name, content] of Object.entries(entries)) {
+      const buf = typeof content === "string" ? Buffer.from(content, "utf8") : content;
+      zip.addBuffer(buf, name);
+    }
+    zip.end();
+  });
+}
+
+function classBytes(major: number): Buffer {
+  const buf = Buffer.alloc(8);
+  buf.writeUInt32BE(0xcafebabe, 0);
+  buf.writeUInt16BE(0, 4);
+  buf.writeUInt16BE(major, 6);
+  return buf;
+}
+
+describe("checkDependencyJars", () => {
+  let rootDir: string;
+
+  beforeEach(async () => {
+    rootDir = await mkdtemp(join(tmpdir(), "pluggy-doctor-depjars-"));
+    await writeFile(
+      join(rootDir, "project.json"),
+      JSON.stringify({
+        name: "test",
+        version: "1.0.0",
+        main: "com.example.Main",
+        compatibility: { versions: ["1.21.8"], platforms: ["paper"] },
+      }),
+    );
+  });
+
+  afterEach(async () => {
+    await rm(rootDir, { recursive: true, force: true });
+  });
+
+  test("passes with no lockfile", async () => {
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const r = await checkDependencyJars(ctx, 21);
+    expect(r.status).toBe("pass");
+    expect(r.detail).toMatch(/no dependencies/);
+  });
+
+  test("skips when userJava is undefined", async () => {
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          "some-plugin": {
+            source: { kind: "modrinth", slug: "some-plugin", version: "1.0.0" },
+            resolvedVersion: "1.0.0",
+            integrity: "sha256-aaa",
+            declaredBy: ["test"],
+          },
+        },
+      }),
+    );
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const r = await checkDependencyJars(ctx, undefined);
+    expect(r.status).toBe("pass");
+    expect(r.detail).toMatch(/skipped/);
+  });
+
+  test("passes when no cached jars exist on disk", async () => {
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          "some-plugin": {
+            source: { kind: "modrinth", slug: "some-plugin", version: "1.0.0" },
+            resolvedVersion: "1.0.0",
+            integrity: "sha256-aaa",
+            declaredBy: ["test"],
+          },
+        },
+      }),
+    );
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const r = await checkDependencyJars(ctx, 21);
+    expect(r.status).toBe("pass");
+    expect(r.detail).toMatch(/no cached jars/);
+  });
+
+  test("warns when a cached jar requires higher Java than available", async () => {
+    const { getCachePath } = await import("../project.ts");
+    const cacheDir = join(getCachePath(), "dependencies", "modrinth", "heavy-dep");
+    await mkdir(cacheDir, { recursive: true });
+    const jarPath = join(cacheDir, "2.0.0.jar");
+    await makeJar(jarPath, { "com/example/Plugin.class": classBytes(65) }); // Java 21
+
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          "heavy-dep": {
+            source: { kind: "modrinth", slug: "heavy-dep", version: "2.0.0" },
+            resolvedVersion: "2.0.0",
+            integrity: "sha256-aaa",
+            declaredBy: ["test"],
+          },
+        },
+      }),
+    );
+
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const r = await checkDependencyJars(ctx, 17); // user has Java 17, dep needs 21
+    expect(r.status).toBe("warn");
+    expect(r.detail).toMatch(/heavy-dep/);
+    expect(r.detail).toMatch(/Java 21/);
+
+    // cleanup
+    await rm(cacheDir, { recursive: true, force: true });
+  });
+
+  test("passes when all cached jars are compatible", async () => {
+    const { getCachePath } = await import("../project.ts");
+    const cacheDir = join(getCachePath(), "dependencies", "modrinth", "compat-dep");
+    await mkdir(cacheDir, { recursive: true });
+    const jarPath = join(cacheDir, "1.0.0.jar");
+    await makeJar(jarPath, { "com/example/Plugin.class": classBytes(61) }); // Java 17
+
+    await writeFile(
+      join(rootDir, "pluggy.lock"),
+      JSON.stringify({
+        version: 1,
+        entries: {
+          "compat-dep": {
+            source: { kind: "modrinth", slug: "compat-dep", version: "1.0.0" },
+            resolvedVersion: "1.0.0",
+            integrity: "sha256-aaa",
+            declaredBy: ["test"],
+          },
+        },
+      }),
+    );
+
+    const ctx = resolveWorkspaceContext(rootDir)!;
+    const r = await checkDependencyJars(ctx, 21); // user has Java 21, dep needs 17
+    expect(r.status).toBe("pass");
+    expect(r.detail).toMatch(/compatible with Java 21/);
+
+    // cleanup
+    await rm(cacheDir, { recursive: true, force: true });
   });
 });

@@ -1,15 +1,16 @@
 import { readdir } from "node:fs/promises";
 import { mkdir, writeFile } from "node:fs/promises";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, join, relative, resolve } from "node:path";
 import process from "node:process";
 
 import { Command, InvalidArgumentError } from "commander";
-import { confirm } from "@inquirer/prompts";
+import { checkbox, confirm, input } from "@inquirer/prompts";
 
 import defaultConfig from "../defaults/config.yml" with { type: "text" };
 import defaultPackage from "../defaults/package.java" with { type: "text" };
 
 import { getPlatform, getRegisteredPlatforms } from "../platform/index.ts";
+import { bold, dim, log } from "../logging.ts";
 import { getCurrentProject, type Project, resolveProjectFile } from "../project.ts";
 import { replace } from "../template.ts";
 
@@ -65,6 +66,13 @@ export async function generateProject(distDir: string, project: Project): Promis
   }
 }
 
+function deriveClassName(name: string): string {
+  return name
+    .split(/[-_]/)
+    .map((part) => (part ? part.charAt(0).toUpperCase() + part.slice(1) : ""))
+    .join("");
+}
+
 /** Factory for the `pluggy init` commander command. */
 export function initCommand(): Command {
   return new Command("init")
@@ -75,15 +83,24 @@ export function initCommand(): Command {
     .option("--name <name>", "Project name.")
     .option("--version <version>", "Project version.", parseSemver)
     .option("--description <description>", "Project description.")
-    .option("--main <main>", "Main class name.", "com.example.Main")
-    .option("--platform <platform>", "Target platform.", parsePlatform, "paper")
+    .option("--main <main>", "Main class name.")
+    .option(
+      "--platform <platform>",
+      "Target platform, repeatable (default: paper).",
+      (val: string, prev: string[]) => {
+        const id = parsePlatform(val);
+        return prev.includes(id) ? prev : [...prev, id];
+      },
+      [] as string[],
+    )
     .option("-y, --yes", "Skip prompts and use defaults.")
     .addHelpText(
       "after",
-      `\nExamples:\n  $ pluggy init --platform spigot --version 1.21.8\n  $ pluggy init --platform paper --version 1.21.8`,
+      `\nExamples:\n  $ pluggy init --platform paper --platform velocity\n  $ pluggy init --platform spigot --version 1.21.8`,
     )
     .action(async function action(this: Command, path: string | undefined, options) {
       const globalOpts = this.optsWithGlobals();
+      const interactive = !options.yes && !globalOpts.json && process.stdout.isTTY;
 
       let currentProject = getCurrentProject();
       if (globalOpts.project) {
@@ -93,72 +110,97 @@ export function initCommand(): Command {
 
       const TARGET_PATH = resolve(process.cwd(), path || ".");
 
+      // Single guard for non-empty dir or existing project
+      let warned = false;
       try {
         const entries = await readdir(TARGET_PATH);
-        if (entries.length > 0 && !options.yes) {
-          const ok = await confirm({
-            message: `The directory "${TARGET_PATH}" is not empty. Do you want to continue and potentially overwrite its contents?`,
-            default: false,
-          });
-          if (!ok) {
-            console.log("Aborting project initialization.");
-            return;
-          }
-        }
+        if (entries.length > 0) warned = true;
       } catch (err) {
         if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
       }
+      if (!warned && currentProject) warned = true;
 
-      if (currentProject && !options.yes) {
-        const same = dirname(currentProject.projectFile) === TARGET_PATH;
-        const ok = await confirm({
-          message: `You are in an existing project at "${relative(process.cwd(), currentProject.projectFile)}". ${
-            same ? "Do you want to overwrite it?" : "Do you want to create a new project inside?"
-          }`,
-          default: false,
-        });
+      if (warned && globalOpts.json && !options.yes) {
+        const reason = currentProject
+          ? `"${relative(process.cwd(), currentProject.projectFile)}" already exists`
+          : `"${TARGET_PATH}" is not empty`;
+        throw new Error(`${reason}. Use --yes to overwrite.`);
+      }
+
+      if (warned && interactive) {
+        const message = currentProject
+          ? `"${relative(process.cwd(), currentProject.projectFile)}" already exists. Overwrite?`
+          : `"${TARGET_PATH}" is not empty. Continue?`;
+        const ok = await confirm({ message, default: false });
         if (!ok) {
-          console.log("Aborting project initialization.");
+          log.info("Aborted.");
           return;
         }
       }
 
-      const platform = options.platform || "paper";
+      // Name
+      const defaultName = basename(TARGET_PATH);
+      const projectName =
+        options.name ??
+        (path
+          ? basename(TARGET_PATH)
+          : interactive
+            ? await input({ message: "Project name", default: defaultName })
+            : defaultName);
 
-      if (!getRegisteredPlatforms().includes(platform)) {
+      if (!/^[a-zA-Z0-9_-]+$/.test(projectName)) {
         throw new InvalidArgumentError(
-          `Invalid platform: "${platform}". Available platforms: ${getRegisteredPlatforms().join(", ")}`,
+          `Invalid project name: "${projectName}". Only alphanumeric characters, underscores, and hyphens are allowed.`,
         );
       }
 
-      const latestVersion = await getPlatform(platform).getLatestVersion();
+      // Platforms
+      const registeredPlatforms = getRegisteredPlatforms();
+      const platforms: string[] =
+        options.platform.length > 0
+          ? options.platform
+          : interactive
+            ? await checkbox({
+                message: "Target platforms",
+                choices: registeredPlatforms.map((p) => ({
+                  value: p,
+                  name: p,
+                  checked: p === "paper",
+                })),
+                validate: (vals) => vals.length > 0 || "Select at least one platform.",
+              })
+            : ["paper"];
+
+      // Main class
+      const className = deriveClassName(projectName) || "Main";
+      const derivedMain = `com.example.${className}`;
+      const projectMain =
+        options.main ??
+        (interactive ? await input({ message: "Main class", default: derivedMain }) : derivedMain);
+
+      if (!projectMain || !/^[a-zA-Z0-9_.]+$/.test(projectMain) || !projectMain.includes(".")) {
+        throw new InvalidArgumentError(
+          `Invalid main class: "${projectMain}". It must be a valid Java classpath (e.g., com.example.Main).`,
+        );
+      }
+
+      // Fetch latest version for each selected platform in parallel
+      if (!globalOpts.json) log.info(`Fetching latest versions…`);
+      const versionResults = await Promise.all(
+        platforms.map((p) => getPlatform(p).getLatestVersion()),
+      );
+      const versions = [...new Set(versionResults.map((v) => v.version))];
 
       const INITIAL_PROJECT: Project = {
-        name: options.name || basename(TARGET_PATH),
+        name: projectName,
         version: options.version || "1.0.0",
         description: options.description || "A simple Minecraft plugin",
-        main: options.main || "com.example.Main",
+        main: projectMain,
         compatibility: {
-          versions: [latestVersion.version],
-          platforms: [platform],
+          versions,
+          platforms,
         },
       };
-
-      if (!/^[a-zA-Z0-9_]+$/.test(INITIAL_PROJECT.name)) {
-        throw new InvalidArgumentError(
-          `Invalid project name: "${INITIAL_PROJECT.name}". Only alphanumeric characters and underscores are allowed.`,
-        );
-      }
-
-      if (
-        !INITIAL_PROJECT.main ||
-        !/^[a-zA-Z0-9_.]+$/.test(INITIAL_PROJECT.main) ||
-        !INITIAL_PROJECT.main.includes(".")
-      ) {
-        throw new InvalidArgumentError(
-          `Invalid main class: "${INITIAL_PROJECT.main}". It must be a valid Java classpath (e.g., com.example.Main).`,
-        );
-      }
 
       await generateProject(TARGET_PATH, INITIAL_PROJECT);
 
@@ -173,6 +215,12 @@ export function initCommand(): Command {
         return;
       }
 
-      console.log(`Project "${INITIAL_PROJECT.name}" initialized successfully at ${TARGET_PATH}`);
+      log.success(`Project ${bold(`"${INITIAL_PROJECT.name}"`)} initialized`);
+
+      const isCurrentDir = TARGET_PATH === resolve(process.cwd());
+      console.log();
+      console.log(dim("  Next steps:"));
+      if (!isCurrentDir) console.log(dim(`    cd ${relative(process.cwd(), TARGET_PATH)}`));
+      console.log(dim("    pluggy dev"));
     });
 }

@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import process from "node:process";
@@ -6,7 +7,8 @@ import process from "node:process";
 import { Command } from "commander";
 
 import { pickDescriptor } from "../build/descriptor.ts";
-import { type LockfileEntry, readLock } from "../lockfile.ts";
+import { classMajorToJava, readJarClassMajor, readManifestAttribute } from "../jar.ts";
+import { type LockfileEntry, type TransitiveEntry, readLock } from "../lockfile.ts";
 import { bold, green, log, red, yellow } from "../logging.ts";
 import { getRegisteredPlatforms } from "../platform/index.ts";
 import { getCachePath, type ResolvedProject } from "../project.ts";
@@ -34,6 +36,7 @@ export interface DoctorCommandOptions {
     workspace?: (ctx: WorkspaceContext) => CheckResult;
     descriptor?: (ctx: WorkspaceContext) => CheckResult[];
     outdated?: () => Promise<CheckResult>;
+    dependencyJars?: () => Promise<CheckResult>;
   };
 }
 
@@ -60,7 +63,15 @@ export async function runDoctorCommand(
   const hooks = opts.checks ?? {};
   const all: CheckResult[] = [];
 
-  all.push(await (hooks.java ? hooks.java() : checkJava(context)));
+  let userJava: number | undefined;
+  let javaError: string | undefined;
+  try {
+    userJava = await getJavaMajor();
+  } catch (err) {
+    javaError = err instanceof Error ? err.message : String(err);
+  }
+
+  all.push(await (hooks.java ? hooks.java() : checkJava(context, userJava, javaError)));
   all.push(await (hooks.cache ? hooks.cache() : checkCache()));
 
   const registryProject = context.current?.project ?? context.root;
@@ -81,6 +92,9 @@ export async function runDoctorCommand(
   all.push(...descResults);
 
   all.push(await (hooks.outdated ? hooks.outdated() : checkOutdated(context)));
+  all.push(
+    await (hooks.dependencyJars ? hooks.dependencyJars() : checkDependencyJars(context, userJava)),
+  );
 
   const hardFailures = all.filter((c) => c.status === "fail");
   const ok = hardFailures.length === 0;
@@ -115,49 +129,69 @@ export async function runDoctorCommand(
 }
 
 /**
- * Probe `java -version`, parsing the major version from its output. Warns
- * when the toolchain is outside the 8-21 window required by BuildTools-based
- * platforms (spigot, bukkit).
+ * Spawn `java -version` and return the parsed major version number.
+ * Returns `undefined` if the version string cannot be parsed.
+ * Throws if Java is not installed or the process fails.
  */
-export async function checkJava(context: WorkspaceContext): Promise<CheckResult> {
-  const target = context.current?.project ?? context.root;
-  const primaryPlatform = target.compatibility?.platforms?.[0];
+export async function getJavaMajor(): Promise<number | undefined> {
+  const out = await runJavaVersion();
+  const combined = `${out.stdout}\n${out.stderr}`;
+  const match =
+    combined.match(/version "(\d+)(?:\.(\d+))?[^"]*"/) ??
+    combined.match(/version (\d+)(?:\.(\d+))?/);
+  if (!match) return undefined;
+  return Number.parseInt(match[1] === "1" && match[2] !== undefined ? match[2] : match[1], 10);
+}
 
-  try {
-    const out = await runJavaVersion();
-    // `java -version` writes to stderr on most JDKs.
-    const combined = `${out.stdout}\n${out.stderr}`;
-    const match =
-      combined.match(/version "(\d+)(?:\.(\d+))?[^"]*"/) ??
-      combined.match(/version (\d+)(?:\.(\d+))?/);
-    const major = match
-      ? Number.parseInt(match[1] === "1" && match[2] !== undefined ? match[2] : match[1], 10)
-      : undefined;
-    const detail = major === undefined ? combined.split("\n")[0] : `Java ${major}`;
-
-    if (
-      primaryPlatform !== undefined &&
-      (primaryPlatform === "spigot" || primaryPlatform === "bukkit") &&
-      major !== undefined &&
-      (major < 8 || major > 21)
-    ) {
-      return {
-        id: "java",
-        label: "Java toolchain",
-        status: "warn",
-        detail: `${detail} — spigot/bukkit BuildTools needs Java 8-21`,
-      };
-    }
-    return { id: "java", label: "Java toolchain", status: "pass", detail };
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+/**
+ * Check the Java toolchain version. For spigot/bukkit projects, reads the
+ * minimum required Java version from the cached `BuildTools.jar` manifest
+ * so the check stays accurate as BuildTools is updated.
+ *
+ * Accepts pre-resolved `userJava` / `javaError` from `runDoctorCommand` to
+ * avoid spawning `java -version` more than once per doctor run.
+ */
+export async function checkJava(
+  context: WorkspaceContext,
+  userJava?: number,
+  javaError?: string,
+): Promise<CheckResult> {
+  if (javaError !== undefined) {
     return {
       id: "java",
       label: "Java toolchain",
       status: "fail",
-      detail: `java not found or failed to run: ${message}`,
+      detail: `java not found or failed to run: ${javaError}`,
     };
   }
+  if (userJava === undefined) {
+    return {
+      id: "java",
+      label: "Java toolchain",
+      status: "fail",
+      detail: "java not found or could not parse version",
+    };
+  }
+
+  const detail = `Java ${userJava}`;
+  const target = context.current?.project ?? context.root;
+  const primaryPlatform = target.compatibility?.platforms?.[0];
+
+  if (primaryPlatform === "spigot" || primaryPlatform === "bukkit") {
+    const buildToolsPath = join(getCachePath(), "BuildTools.jar");
+    const jdkSpec = await readManifestAttribute(buildToolsPath, "Build-Jdk-Spec");
+    const minJava = jdkSpec !== undefined ? Number.parseInt(jdkSpec, 10) : 8;
+    if (!Number.isNaN(minJava) && userJava < minJava) {
+      return {
+        id: "java",
+        label: "Java toolchain",
+        status: "warn",
+        detail: `${detail} — BuildTools requires Java ${minJava}+`,
+      };
+    }
+  }
+
+  return { id: "java", label: "Java toolchain", status: "pass", detail };
 }
 
 async function runJavaVersion(): Promise<{ stdout: string; stderr: string }> {
@@ -307,7 +341,7 @@ async function checkOneRegistry(url: string): Promise<CheckResult> {
   }
 }
 
-const NAME_RE = /^[a-zA-Z0-9_]+$/;
+const NAME_RE = /^[a-zA-Z0-9_-]+$/;
 const VERSION_RE = /^\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?$/;
 
 /**
@@ -483,6 +517,116 @@ export async function checkOutdated(context: WorkspaceContext): Promise<CheckRes
     label: "Outdated dependencies",
     status: "warn",
     detail: outdated.join("; "),
+  };
+}
+
+/**
+ * For every cached dependency JAR in the lockfile, read its class-file
+ * bytecode version and warn if any require a higher Java release than the
+ * active toolchain provides.
+ */
+export async function checkDependencyJars(
+  context: WorkspaceContext,
+  userJava?: number,
+): Promise<CheckResult> {
+  const lock = readLock(context.root.rootDir);
+  if (lock === null || Object.keys(lock.entries).length === 0) {
+    return {
+      id: "dep-jars",
+      label: "Dependency compatibility",
+      status: "pass",
+      detail: "no dependencies locked",
+    };
+  }
+
+  if (userJava === undefined) {
+    return {
+      id: "dep-jars",
+      label: "Dependency compatibility",
+      status: "pass",
+      detail: "java not available, skipped",
+    };
+  }
+
+  type FlatEntry = { name: string; entry: LockfileEntry | TransitiveEntry };
+  const flat: FlatEntry[] = [];
+
+  function collect(name: string, entry: LockfileEntry | TransitiveEntry): void {
+    flat.push({ name, entry });
+    for (const t of entry.transitives ?? []) {
+      const tName =
+        t.source.kind === "maven"
+          ? `${t.source.groupId}:${t.source.artifactId}`
+          : t.source.kind === "modrinth"
+            ? t.source.slug
+            : "unknown";
+      collect(tName, t);
+    }
+  }
+  for (const [name, entry] of Object.entries(lock.entries)) collect(name, entry);
+
+  function jarPath(e: FlatEntry): string | undefined {
+    const { source, resolvedVersion } = e.entry;
+    if (source.kind === "modrinth") {
+      return join(
+        getCachePath(),
+        "dependencies",
+        "modrinth",
+        source.slug,
+        `${resolvedVersion}.jar`,
+      );
+    }
+    if (source.kind === "maven") {
+      return join(
+        getCachePath(),
+        "dependencies",
+        "maven",
+        source.groupId,
+        source.artifactId,
+        `${resolvedVersion}.jar`,
+      );
+    }
+    return undefined;
+  }
+
+  const tooNew: string[] = [];
+  let checked = 0;
+
+  await Promise.all(
+    flat.map(async (e) => {
+      const path = jarPath(e);
+      if (!path || !existsSync(path)) return;
+      const classMajor = await readJarClassMajor(path);
+      if (classMajor === undefined) return;
+      checked++;
+      const required = classMajorToJava(classMajor);
+      if (required > userJava!) tooNew.push(`${e.name} requires Java ${required}`);
+    }),
+  );
+
+  if (checked === 0) {
+    return {
+      id: "dep-jars",
+      label: "Dependency compatibility",
+      status: "pass",
+      detail: "no cached jars to inspect",
+    };
+  }
+
+  if (tooNew.length > 0) {
+    return {
+      id: "dep-jars",
+      label: "Dependency compatibility",
+      status: "warn",
+      detail: tooNew.join("; "),
+    };
+  }
+
+  return {
+    id: "dep-jars",
+    label: "Dependency compatibility",
+    status: "pass",
+    detail: `${checked} jar${checked === 1 ? "" : "s"} compatible with Java ${userJava}`,
   };
 }
 
