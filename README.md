@@ -78,8 +78,9 @@ For the full walkthrough, read
   ordering, and `workspace:` source kind for sibling deps.
 - **Cross-platform.** macOS, Linux, Windows — identical behaviour, same
   native binary format (arm64 + amd64 where available).
-- **IDE integration.** VS Code, Eclipse, IntelliJ. Set `"ide": "..."` in
-  `project.json` and builds scaffold the right project files.
+- **IDE integration.** VS Code, Eclipse, IntelliJ. Set `"ide": [...]` in
+  `project.json` (or pick them at `init` time) and builds scaffold the
+  right project files for every listed editor.
 - **Reproducible.** Every resolved dep carries a SHA-256 integrity
   hash. `pluggy.lock` is sorted, LF-terminated, atomic-written.
 

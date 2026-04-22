@@ -1,8 +1,8 @@
 # IDE integration
 
-Set `"ide"` in `project.json` and `pluggy build` writes editor
-scaffolding so your IDE sees pluggy's resolved classpath. Three values are
-supported:
+Set `"ide"` in `project.json` to an array of editor kinds, and `pluggy
+build` writes scaffolding so each IDE sees pluggy's resolved classpath.
+Three values are supported:
 
 | Value        | Produces                  | Consumer                           |
 | ------------ | ------------------------- | ---------------------------------- |
@@ -10,7 +10,14 @@ supported:
 | `"eclipse"`  | `.classpath` + `.project` | Eclipse IDE / Spring Tools / Theia |
 | `"intellij"` | `.idea/` + `<name>.iml`   | IntelliJ IDEA, CLion (Java plugin) |
 
-Unset `ide` means no scaffolding.
+Any subset is valid — list every editor your team uses:
+
+```json
+"ide": ["vscode", "intellij"]
+```
+
+Unset or empty `ide` means no scaffolding. `pluggy init` asks for this
+interactively via a checkbox prompt.
 
 ## When the files are written
 

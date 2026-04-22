@@ -5,10 +5,10 @@ the code, with placeholders (`<...>`) for interpolated values.
 
 ## `pluggy init`
 
-### `Invalid project name: "<name>". Only alphanumeric characters and underscores are allowed.`
+### `Invalid project name: "<name>". Only alphanumeric characters, underscores, and hyphens are allowed.`
 
-`--name` must match `^[a-zA-Z0-9_]+$`. Hyphens, dots, and Unicode aren't
-allowed. This is enforced by `init` and checked again by `doctor`.
+`--name` must match `^[a-zA-Z0-9_-]+$`. Dots and Unicode aren't allowed.
+This is enforced by `init` and checked again by `doctor`.
 
 ### `Invalid main class: "<main>". It must be a valid Java classpath (e.g., com.example.Main).`
 
@@ -18,12 +18,21 @@ a package for production plugin classes.
 
 ### Network errors during init or dev
 
-`pluggy init` hits PaperMC / Spigot / Modrinth to pick the latest
-version for `compatibility.versions[0]`. If your network is offline or
-the upstream is down:
+`pluggy init` calls `getVersions()` on every selected platform in
+parallel and picks the highest version they all publish. If your network
+is offline or the upstream is down:
 
-- Pass `--version <semver>` to skip the network call.
+- Pass `--mc-version <semver>` to skip the network call entirely.
 - Or just put a version in `project.json` after `init` completes.
+
+### `No compatible Minecraft version found across platforms: <list>.`
+
+pluggy couldn't find a Minecraft version that every selected platform
+publishes. Common causes: mixing a Spigot-only codebase with Paper 26.x
+(Spigot hasn't cut that version yet), or selecting Velocity alongside
+Paper (different release cadences). Either drop the platform that's
+lagging, split the project into per-family workspaces, or pin the
+version yourself with `--mc-version`.
 
 `pluggy dev` also hits the platform registry for the server jar. The
 first run per `(platform, version)` needs network; subsequent runs
@@ -171,12 +180,14 @@ with stateful plugins. Full restart is slower but correct.
 
 Install a JDK. See the `javac` entry above.
 
-### `! Java toolchain — Java 22 — spigot/bukkit BuildTools needs Java 8-21`
+### `! Java toolchain — Java <x> — BuildTools requires Java <y>+`
 
-The detected JDK is outside the window Spigot BuildTools supports. This
+The detected JDK is older than the floor declared by the cached
+`BuildTools.jar` (read from its `Build-Jdk-Spec` manifest attribute). This
 is a warning — if you're building against Paper, it doesn't matter. If
-you're building against Spigot or Bukkit, install a JDK in the supported
-range and make it the first one on `PATH`.
+you're building against Spigot or Bukkit, install a JDK at or above the
+reported floor and make it the first one on `PATH`. The floor moves as
+SpigotMC ships new BuildTools releases.
 
 ### `✖ Cache reachability — cache is not writable: <path> (<errno>)`
 

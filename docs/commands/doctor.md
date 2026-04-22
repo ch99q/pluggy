@@ -19,7 +19,7 @@ the exit code.
 
 | id                    | label                   | fail trigger                                                       | warn trigger                                                                                                         |
 | --------------------- | ----------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
-| `java`                | Java toolchain          | `java -version` fails (not on PATH, or non-zero exit).             | Detected JDK outside Java 8 – 21 **and** primary platform is `spigot` or `bukkit` (BuildTools requires that window). |
+| `java`                | Java toolchain          | `java -version` fails (not on PATH, or non-zero exit).             | Primary platform is `spigot` or `bukkit` **and** the detected JDK is older than the Java floor declared by the cached `BuildTools.jar`. |
 | `cache`               | Cache reachability      | Path exists but isn't a directory; probe write fails.              | Directory doesn't exist yet (will be created on first use).                                                          |
 | `registry <url>`      | Registry                | —                                                                  | `HEAD` returns a 5xx or the request errors. 2xx / 3xx / 4xx count as reachable.                                      |
 | `project (<name>)`    | Validate `project.json` | `name`, `version`, or `compatibility` malformed; platform unknown. | —                                                                                                                    |
@@ -32,6 +32,11 @@ the exit code.
 - `java -version` is spawned without a shell. Output is parsed for the
   major version. pluggy accepts both the old `1.8.0_302` and modern
   `21.0.2` formats.
+- For `spigot` / `bukkit` projects, pluggy reads the `Build-Jdk-Spec`
+  manifest attribute from the cached `BuildTools.jar` to determine the
+  minimum Java required. This keeps the check accurate as the SpigotMC
+  team updates BuildTools' JDK floor. If `BuildTools.jar` isn't cached
+  yet or the attribute is missing, the floor defaults to Java 8.
 - The cache directory is stat-checked, then probed with a `writeFile` +
   `unlink` at `.pluggy-doctor-probe-<pid>`. Missing permissions fail the
   check.

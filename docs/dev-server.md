@@ -190,12 +190,15 @@ wraps `taskkill` internally, and the SIGINT handler is installed through
 pluggy runs:
 
 ```text
-java -Xmx<memory> <project.dev.jvmArgs or --args> -jar server.jar
+java -Xmx<memory> <project.dev.jvmArgs or --args> -jar server.jar nogui
 ```
 
 Working directory is `dev/`. stdin is piped — pluggy's stdin is forwarded
 so you can type server commands into the terminal. stdout/stderr are
-inherited, so the server's logs are your terminal's output.
+inherited, so the server's logs are your terminal's output. The trailing
+`nogui` suppresses Bukkit's AWT console window on desktop JVMs — pluggy
+always runs the server headless because stdin/stdout is its control
+channel.
 
 No shell is spawned. Windows handles `.exe` lookup internally when the
 command is just `java`.

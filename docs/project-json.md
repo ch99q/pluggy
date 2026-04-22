@@ -14,7 +14,7 @@ which workspace you're sitting in.
   "description": "A small Paper plugin",
   "authors": ["Alice", "Bob"],
   "main": "com.example.myplugin.Main",
-  "ide": "vscode",
+  "ide": ["vscode"],
   "compatibility": {
     "versions": ["1.21.8"],
     "platforms": ["paper"]
@@ -109,9 +109,18 @@ Required for every buildable workspace. A workspace-less root that declares
 
 ### `ide` (optional)
 
-One of `"vscode"`, `"eclipse"`, `"intellij"`. Controls which editor scaffolding
-`build` writes. Unset means no scaffolding. See [IDE integration](./ide.md)
-for what each value produces.
+Array of `"vscode"`, `"eclipse"`, `"intellij"`. Controls which editor
+scaffolding `build` writes — pluggy walks the array and generates files
+for every listed IDE, so a mixed-editor team can commit one
+`project.json` that covers everyone. Unset or empty means no scaffolding.
+See [IDE integration](./ide.md) for what each value produces.
+
+```json
+"ide": ["vscode", "intellij"]
+```
+
+`pluggy init` writes this field from the interactive IDE checkbox; edit
+the array by hand to add or remove editors later.
 
 ### `compatibility` (required)
 
