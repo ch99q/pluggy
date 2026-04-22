@@ -46,7 +46,9 @@ pluggy dev [options]
      merged with `project.dev.serverProperties`.
 6. Populates `dev/plugins/` with the plugin jar, runtime plugin deps,
    and `project.dev.extraPlugins`. Each entry is hardlinked by basename.
-7. Spawns `java -Xmx<mem> <jvmArgs> -jar server.jar` inside `dev/`.
+7. Spawns `java -Xmx<mem> <jvmArgs> -jar server.jar nogui` inside `dev/`.
+   The trailing `nogui` suppresses Bukkit's AWT console window on desktop
+   JVMs so dev sessions stay headless.
 
 ## The `dev/` layout
 

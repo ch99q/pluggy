@@ -63,8 +63,9 @@ pluggy init --yes --name my_plugin --main com.example.myplugin.Main
 - `src/config.yml` — a resources file with `${project.name}` placeholders
   rendered at build time.
 
-The project name must match `[a-zA-Z0-9_]+`. The `--main` value must be a
-dotted Java class path, minimum package + class.
+The project name must match `[a-zA-Z0-9_-]+` (alphanumeric, underscores,
+and hyphens). The `--main` value must be a dotted Java class path,
+minimum package + class.
 
 Without `--yes` pluggy prompts interactively; confirmations are skipped when
 the target directory is empty or when `--json` is set.
@@ -86,9 +87,10 @@ $ cat project.json
 ```
 
 The `compatibility.versions[0]` entry is picked up from the Paper upstream
-at init time — it's whatever Paper's API endpoint reported as the latest
-release. Pin this by passing `--version 1.21.8` to `init` if you need a
-specific version.
+at init time — it's the highest release available on every selected
+platform. Pin this by passing `--mc-version 1.21.8` to `init` if you
+need a specific version. (`--version` sets the plugin's own
+`project.version` — they're separate knobs.)
 
 ## Add a dependency
 

@@ -65,6 +65,14 @@ For each target workspace:
    dir. `exclude` is subtracted after.
 9. **Zip.** Walk the staging dir, sort entries lexicographically, write
    a zip with forward-slashed entry paths.
+10. **Platform compile-check.** For every non-primary platform declared
+    in `compatibility.platforms` (i.e. `platforms[1..]`), pluggy runs
+    `checkPlatformCompile` — a javac invocation against that platform's
+    API jar with no artifacts emitted. The primary platform was already
+    compiled in step 7, so this exists solely to catch cases where your
+    source is Paper-clean but references a symbol missing on Spigot,
+    Folia, or a Bungee-family platform. A failing check logs a `warn` and
+    flips `exitCode` to `1`, but the primary jar still ships.
 
 The output jar is written to `<output>` after the staging dir is zipped.
 
@@ -104,11 +112,20 @@ On success:
       "ok": true,
       "outputPath": "/repo/bin/my_plugin-1.0.0.jar",
       "sizeBytes": 145840,
-      "durationMs": 3821
+      "durationMs": 3821,
+      "platformChecks": [
+        { "platform": "spigot", "ok": true, "durationMs": 612 }
+      ]
     }
   ]
 }
 ```
+
+`platformChecks` is omitted when `compatibility.platforms` has a single
+entry (nothing to cross-check). Each entry reports `{ platform, ok,
+durationMs }`, plus `error` when `ok` is `false`. A failed entry sets
+`status: "error"` and exits `1` even though the primary jar was still
+produced.
 
 On partial failure (multi-workspace, at least one workspace failed):
 

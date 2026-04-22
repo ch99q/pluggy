@@ -14,23 +14,28 @@ against `process.cwd()`.
 
 ## Flags
 
-| Flag                   | Default                       | Notes                                                                                                 |
-| ---------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `--name <name>`        | basename of target dir        | Must match `^[a-zA-Z0-9_]+$`.                                                                         |
-| `--version <semver>`   | `1.0.0`                       | Validated as `\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?`.                                                         |
-| `--description <text>` | `"A simple Minecraft plugin"` | Free-form.                                                                                            |
-| `--main <fqcn>`        | `com.example.Main`            | Must be a Java classpath — at least `package.Class`.                                                  |
-| `--platform <id>`      | `paper`                       | Any registered platform: `paper`, `folia`, `spigot`, `bukkit`, `velocity`, `waterfall`, `travertine`. |
-| `-y, --yes`            | off                           | Skip confirmations. Always on under `--json`.                                                         |
+| Flag                    | Default                       | Notes                                                                                                 |
+| ----------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `--name <name>`         | basename of target dir        | Must match `^[a-zA-Z0-9_-]+$`.                                                                        |
+| `--version <semver>`    | `1.0.0`                       | Validated as `\d+\.\d+\.\d+(-[a-zA-Z0-9]+)?`.                                                         |
+| `--description <text>`  | `"A simple Minecraft plugin"` | Free-form.                                                                                            |
+| `--main <fqcn>`         | `com.example.Main`            | Must be a Java classpath — at least `package.Class`.                                                  |
+| `--platform <id>`       | `paper`                       | Any registered platform: `paper`, `folia`, `spigot`, `bukkit`, `velocity`, `waterfall`, `travertine`. Repeatable. |
+| `--mc-version <semver>` | highest common across targets | Minecraft version written to `compatibility.versions[0]`. See below.                                  |
+| `-y, --yes`             | off                           | Skip confirmations. Always on under `--json`.                                                         |
 
-The `--version` here refers to the plugin's own `project.version`. To pin
-the Minecraft version (`compatibility.versions[0]`), don't pass `--version`;
-edit `project.json` after init, or use `pluggy info` against a specific
-platform version.
+The `--version` here refers to the plugin's own `project.version`. The
+Minecraft version lives at `compatibility.versions[0]` and is set by
+`--mc-version`.
 
-At init time pluggy calls the selected platform's `getLatestVersion()`,
-which hits the upstream API (PaperMC, Spigot, etc.). Expect a short
-network wait on first run.
+When `--mc-version` is omitted, pluggy calls `getVersions()` on every
+selected platform in parallel, intersects the results, and picks the
+highest version that every target publishes. That way a multi-platform
+init (e.g. `paper + spigot`) can never pick a Paper-only release. If the
+intersection is empty, init errors with "No compatible Minecraft version
+found across platforms: …" and suggests either dropping platforms or
+passing `--mc-version` explicitly. Expect a short network wait on first
+run.
 
 ## Files produced
 
@@ -48,15 +53,28 @@ version / class name / package name.
 
 ## Prompts
 
-Without `-y`, pluggy prompts before:
+Without `-y`, pluggy walks through an interactive session:
 
-- Scaffolding into a non-empty directory.
-- Scaffolding inside an existing pluggy project (either overwriting it or
-  nesting a new project).
+- **Non-empty target confirm** — scaffolding into a directory that already
+  has files, or nesting a new project inside an existing pluggy project.
+  Defaults to "no".
+- **Project name** — pre-filled with the target basename. Skipped when
+  `--name` is passed or a positional `path` is given.
+- **Target platforms** — checkbox list of every registered platform, with
+  `paper` pre-selected. Skipped when `--platform` is passed. Requires at
+  least one selection.
+- **Main class** — pre-filled with `com.example.<DerivedClassName>`,
+  where the class name is derived from the project name by splitting on
+  `-`/`_` and PascalCasing. Skipped when `--main` is passed.
+- **IDE integration** — checkbox list of `VS Code`, `IntelliJ IDEA`, and
+  `Eclipse`. Selections are written to `project.ide`, which makes
+  `pluggy build` emit project files for those editors. The prompt always
+  runs in interactive mode; leave it empty to skip IDE scaffolding.
 
-Both prompts default to "no". Under `--json`, these situations throw
-instead of prompting — an interactive prompt in a non-interactive session
-would hang forever.
+Under `--json` or `-y`, the non-empty-dir situation throws instead of
+prompting — an interactive prompt in a non-interactive session would
+hang forever — and every other prompt falls back to its default
+(`paper` for platforms, no IDE integration, derived name/main).
 
 ## Human output
 
@@ -86,15 +104,16 @@ Project "example" initialized successfully at /tmp/example
 
 ## Error cases
 
-| Trigger                        | Message                                                                                                       |
-| ------------------------------ | ------------------------------------------------------------------------------------------------------------- |
-| Invalid `--name`               | `Invalid project name: "<name>". Only alphanumeric characters and underscores are allowed.`                   |
-| Invalid `--main`               | `Invalid main class: "<main>". It must be a valid Java classpath (e.g., com.example.Main).`                   |
-| Unknown `--platform`           | `Invalid platform: "<p>". Available platforms: paper, folia, spigot, bukkit, velocity, waterfall, travertine` |
-| Non-empty target dir (no `-y`) | Interactive confirm; "no" aborts with `Aborting project initialization.`                                      |
-| Existing project dir (no `-y`) | As above.                                                                                                     |
+| Trigger                           | Message                                                                                                                                      |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| Invalid `--name`                  | `Invalid project name: "<name>". Only alphanumeric characters, underscores, and hyphens are allowed.`                                        |
+| Invalid `--main`                  | `Invalid main class: "<main>". It must be a valid Java classpath (e.g., com.example.Main).`                                                  |
+| Unknown `--platform`              | `Invalid platform: "<p>". Available platforms: paper, folia, spigot, bukkit, velocity, waterfall, travertine`                                |
+| No MC version common to platforms | `No compatible Minecraft version found across platforms: <list>. Try selecting fewer platforms or specifying a version manually with --mc-version.` |
+| Non-empty target dir (no `-y`)    | Interactive confirm; "no" aborts with `Aborted.`                                                                                             |
+| Existing project dir (no `-y`)    | As above.                                                                                                                                    |
 
-Network failures during `getLatestVersion()` propagate from the platform
+Network failures during `getVersions()` propagate from the platform
 provider — see [Troubleshooting](../troubleshooting.md#network-errors-during-init-or-dev).
 
 ## See also
