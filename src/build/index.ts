@@ -120,6 +120,41 @@ export async function buildProject(
   };
 }
 
+/**
+ * Compile the project against a specific platform's API without producing a
+ * JAR. Used by multi-platform validation to check each declared platform
+ * independently of the primary build.
+ *
+ * Throws with a javac error message on failure.
+ */
+export async function checkPlatformCompile(
+  project: ResolvedProject,
+  platformId: string,
+  opts: Pick<BuildOptions, "clean"> = {},
+): Promise<void> {
+  const stagingId = createHash("sha256")
+    .update(`${project.name}\0${project.version}\0${project.rootDir}\0${platformId}`)
+    .digest("hex")
+    .slice(0, 12);
+  const stagingDir = join(project.rootDir, STAGING_ROOT, `${stagingId}-check`);
+
+  if (opts.clean) await rm(stagingDir, { recursive: true, force: true });
+  await mkdir(stagingDir, { recursive: true });
+
+  const registries = collectRegistries(project);
+  const resolvedDeps = await resolveDeclaredDependencies(project, registries);
+  const platformApiJars = await resolvePlatformApiJars(project, registries, platformId);
+
+  const depJars = resolvedDeps.flatMap(flattenJarPaths);
+  const classpath = dedupePreservingOrder([...depJars, ...platformApiJars]);
+
+  await compileJava(project, {
+    sourceDir: join(project.rootDir, "src"),
+    outputDir: stagingDir,
+    classpath,
+  });
+}
+
 function hasUserDescriptor(project: ResolvedProject, descriptorPath: string): boolean {
   const resources = project.resources;
   if (resources === undefined || resources === null) return false;
@@ -162,12 +197,13 @@ async function resolveDeclaredDependencies(
 async function resolvePlatformApiJars(
   project: ResolvedProject,
   projectRegistries: string[],
+  platformId?: string,
 ): Promise<string[]> {
   const platforms = project.compatibility?.platforms ?? [];
   const versions = project.compatibility?.versions ?? [];
   if (platforms.length === 0 || versions.length === 0) return [];
 
-  const primaryId = platforms[0];
+  const primaryId = platformId ?? platforms[0];
   const primaryVersion = versions[0];
 
   let primary;

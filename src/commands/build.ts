@@ -2,7 +2,7 @@ import process from "node:process";
 
 import { Command, InvalidArgumentError } from "commander";
 
-import { buildProject, type BuildResult } from "../build/index.ts";
+import { buildProject, checkPlatformCompile, type BuildResult } from "../build/index.ts";
 import { bold, log } from "../logging.ts";
 import type { ResolvedProject } from "../project.ts";
 import {
@@ -22,6 +22,13 @@ export interface BuildCommandOptions {
   cwd?: string;
 }
 
+export interface PlatformCheckResult {
+  platform: string;
+  ok: boolean;
+  durationMs: number;
+  error?: string;
+}
+
 export interface BuildCommandResult {
   status: "success" | "partial";
   /** Zero on full success, 1 when at least one workspace failed. */
@@ -34,6 +41,8 @@ export interface BuildCommandResult {
     sizeBytes?: number;
     durationMs: number;
     error?: string;
+    /** Compile-only results for each non-primary platform declared in project.json. */
+    platformChecks?: PlatformCheckResult[];
   }>;
 }
 
@@ -70,6 +79,29 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
         clean: opts.clean,
         skipClasspath: opts.skipClasspath,
       });
+
+      // Compile-check every non-primary platform declared in project.json.
+      const extraPlatforms = (target.compatibility?.platforms ?? []).slice(1);
+      const platformChecks: PlatformCheckResult[] = [];
+      for (const platform of extraPlatforms) {
+        const pStart = Date.now();
+        try {
+          await checkPlatformCompile(target, platform, { clean: opts.clean });
+          platformChecks.push({ platform, ok: true, durationMs: Date.now() - pStart });
+          if (!opts.json) log.success(`  ${platform}: compiles`);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err);
+          platformChecks.push({
+            platform,
+            ok: false,
+            durationMs: Date.now() - pStart,
+            error: message,
+          });
+          if (!opts.json) log.warn(`  ${platform}: ${message}`);
+          anyFailed = true;
+        }
+      }
+
       results.push({
         workspace: label,
         rootDir,
@@ -77,6 +109,7 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
         outputPath: res.outputPath,
         sizeBytes: res.sizeBytes,
         durationMs: res.durationMs,
+        platformChecks: platformChecks.length > 0 ? platformChecks : undefined,
       });
       if (!opts.json) {
         log.success(
@@ -116,6 +149,7 @@ export async function runBuildCommand(opts: BuildCommandOptions): Promise<BuildC
         sizeBytes: r.sizeBytes,
         durationMs: r.durationMs,
         error: r.error,
+        platformChecks: r.platformChecks,
       })),
     };
     if (anyFailed) {
